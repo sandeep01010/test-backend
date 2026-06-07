@@ -1,0 +1,32 @@
+# Multi-stage build: builder → distroless runtime
+# Stage 1: Build
+FROM eclipse-temurin:21-jdk-alpine AS builder
+WORKDIR /build
+RUN apk add --no-cache maven
+COPY services/user-service/pom.xml pom.xml
+COPY services/user-service/src src
+RUN mvn -B -ntp package -DskipTests
+
+# Stage 2: Runtime (distroless for minimal attack surface)
+FROM gcr.io/distroless/java21-debian12:nonroot
+LABEL org.opencontainers.image.title="exam-platform/user-service"
+LABEL org.opencontainers.image.version="1.0.0"
+
+WORKDIR /app
+
+# Copy the fat jar
+COPY --from=builder /build/target/user-service-1.0.0.jar app.jar
+
+# Non-root user (enforced by distroless nonroot)
+EXPOSE 8081
+
+# JVM tuning for containers
+ENV JAVA_OPTS="\
+  -XX:+UseContainerSupport \
+  -XX:MaxRAMPercentage=75.0 \
+  -XX:+UseZGC \
+  -XX:+ZGenerational \
+  -Djava.security.egd=file:/dev/./urandom \
+  -Dspring.profiles.active=prod"
+
+ENTRYPOINT ["java", "-jar", "app.jar"]

@@ -1,0 +1,134 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: test-engine
+  namespace: exam-platform
+  labels:
+    app: test-engine
+    version: "1.0.0"
+    tier: backend
+spec:
+  # Initial replicas; HPA will scale this automatically
+  replicas: 20
+  selector:
+    matchLabels:
+      app: test-engine
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 5
+      maxUnavailable: 0    # Zero-downtime deploy
+  template:
+    metadata:
+      labels:
+        app: test-engine
+        version: "1.0.0"
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8083"
+        prometheus.io/path: "/api/v1/actuator/prometheus"
+    spec:
+      # Spread pods across availability zones
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              app: test-engine
+
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchExpressions:
+                    - key: app
+                      operator: In
+                      values: [test-engine]
+                topologyKey: kubernetes.io/hostname
+
+      containers:
+        - name: test-engine
+          image: examplatform.azurecr.io/test-engine:1.0.0
+          ports:
+            - containerPort: 8083
+              name: http
+
+          env:
+            - name: DB_URL
+              valueFrom:
+                secretKeyRef:
+                  name: db-secret
+                  key: url
+            - name: DB_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: db-secret
+                  key: username
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: db-secret
+                  key: password
+            - name: REDIS_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: infra-config
+                  key: redis-host
+            - name: KAFKA_SERVERS
+              valueFrom:
+                configMapKeyRef:
+                  name: infra-config
+                  key: kafka-servers
+            - name: MONGO_URI
+              valueFrom:
+                secretKeyRef:
+                  name: mongo-secret
+                  key: uri
+            - name: JAVA_OPTS
+              value: >-
+                -XX:+UseContainerSupport
+                -XX:MaxRAMPercentage=75.0
+                -XX:+UseZGC
+                -XX:+ZGenerational
+                -Djava.security.egd=file:/dev/./urandom
+
+          resources:
+            requests:
+              memory: "1Gi"
+              cpu: "500m"
+            limits:
+              memory: "2Gi"
+              cpu: "2000m"
+
+          readinessProbe:
+            httpGet:
+              path: /api/v1/actuator/health/readiness
+              port: 8083
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            failureThreshold: 3
+
+          livenessProbe:
+            httpGet:
+              path: /api/v1/actuator/health/liveness
+              port: 8083
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            failureThreshold: 3
+
+          lifecycle:
+            preStop:
+              exec:
+                # Allow in-flight WebSocket connections to drain (30s)
+                command: ["/bin/sh", "-c", "sleep 30"]
+
+      terminationGracePeriodSeconds: 60
+
+      # Run as non-root
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000

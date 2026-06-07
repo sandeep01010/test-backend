@@ -1,0 +1,145 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: api-gateway
+
+  cloud:
+    gateway:
+      routes:
+        # User Service — Auth routes (no JWT required)
+        - id: user-service-auth
+          uri: http://user-service:8081
+          predicates:
+            - Path=/api/v1/auth/**
+          filters:
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 20
+                redis-rate-limiter.burstCapacity: 40
+                key-resolver: "#{@ipKeyResolver}"
+            - RewritePath=/api/v1/auth/(?<segment>.*), /api/v1/auth/${segment}
+
+        # User Service — Protected routes
+        - id: user-service-protected
+          uri: http://user-service:8081
+          predicates:
+            - Path=/api/v1/users/**
+          filters:
+            - JwtAuthFilter
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 100
+                redis-rate-limiter.burstCapacity: 200
+                key-resolver: "#{@userKeyResolver}"
+
+        # Exam Service
+        - id: exam-service
+          uri: http://exam-service:8082
+          predicates:
+            - Path=/api/v1/exams/**, /api/v1/questions/**
+          filters:
+            - JwtAuthFilter
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 100
+                redis-rate-limiter.burstCapacity: 300
+                key-resolver: "#{@userKeyResolver}"
+            - name: CircuitBreaker
+              args:
+                name: exam-service-cb
+                fallbackUri: forward:/fallback/exam
+
+        # Test Engine — HTTP
+        - id: test-engine-http
+          uri: http://test-engine:8083
+          predicates:
+            - Path=/api/v1/sessions/**
+          filters:
+            - JwtAuthFilter
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 300
+                redis-rate-limiter.burstCapacity: 600
+                key-resolver: "#{@userKeyResolver}"
+            - name: CircuitBreaker
+              args:
+                name: test-engine-cb
+                fallbackUri: forward:/fallback/session
+
+        # Test Engine — WebSocket (sticky sessions required)
+        - id: test-engine-websocket
+          uri: ws://test-engine:8083
+          predicates:
+            - Path=/ws/**
+          filters:
+            - JwtAuthFilter
+            - name: CircuitBreaker
+              args:
+                name: ws-cb
+
+        # Result Service
+        - id: result-service
+          uri: http://result-service:8084
+          predicates:
+            - Path=/api/v1/results/**
+          filters:
+            - JwtAuthFilter
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 50
+                redis-rate-limiter.burstCapacity: 100
+                key-resolver: "#{@userKeyResolver}"
+
+      # Global CORS
+      globalcors:
+        corsConfigurations:
+          "[/**]":
+            allowedOriginPatterns:
+              - "https://*.examplatform.com"
+              - "http://localhost:3000"
+            allowedMethods: [GET, POST, PUT, DELETE, OPTIONS]
+            allowedHeaders: ["*"]
+            allowCredentials: true
+            maxAge: 3600
+
+      # Default filters applied to all routes
+      default-filters:
+        - AddResponseHeader=X-Frame-Options, DENY
+        - AddResponseHeader=X-Content-Type-Options, nosniff
+        - AddResponseHeader=Referrer-Policy, no-referrer
+        - name: Retry
+          args:
+            retries: 2
+            statuses: BAD_GATEWAY, SERVICE_UNAVAILABLE
+            methods: GET
+
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+
+jwt:
+  public-key-pem: ${JWT_PUBLIC_KEY_PEM}
+
+resilience4j:
+  circuitbreaker:
+    configs:
+      default:
+        slidingWindowSize: 10
+        permittedNumberOfCallsInHalfOpenState: 5
+        waitDurationInOpenState: 30s
+        failureRateThreshold: 50
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus,metrics,gateway
+
+logging:
+  level:
+    org.springframework.cloud.gateway: INFO
+    com.examplatform.gateway: DEBUG

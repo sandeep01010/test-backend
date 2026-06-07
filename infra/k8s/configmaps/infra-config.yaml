@@ -1,0 +1,81 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: exam-platform
+  labels:
+    app.kubernetes.io/managed-by: ArgoCD
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: infra-config
+  namespace: exam-platform
+data:
+  redis-host: "exam-redis.exam-platform.svc.cluster.local"
+  redis-port: "6379"
+  kafka-servers: "exam-kafka-broker-0.exam-kafka.exam-platform.svc.cluster.local:9092,exam-kafka-broker-1.exam-kafka.exam-platform.svc.cluster.local:9092,exam-kafka-broker-2.exam-kafka.exam-platform.svc.cluster.local:9092"
+  mongo-host: "exam-mongodb.exam-platform.svc.cluster.local"
+  log-level: "INFO"
+
+---
+# Secrets are managed by Azure Key Vault + Secrets Store CSI driver
+# These placeholders show structure; actual values injected at runtime
+apiVersion: v1
+kind: Secret
+metadata:
+  name: db-secret
+  namespace: exam-platform
+  annotations:
+    azure.workload.identity/client-id: "${AZURE_CLIENT_ID}"
+type: Opaque
+stringData:
+  url: "jdbc:postgresql://exam-postgres.postgres.database.azure.com:5432/examplatform?sslmode=require"
+  username: "examuser"
+  password: "${DB_PASSWORD_FROM_KEYVAULT}"
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mongo-secret
+  namespace: exam-platform
+type: Opaque
+stringData:
+  uri: "mongodb+srv://examuser:${MONGO_PASSWORD}@exam-cluster.mongodb.net/exam_platform?retryWrites=true&w=majority"
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: jwt-secret
+  namespace: exam-platform
+type: Opaque
+stringData:
+  private-key-pem: "${JWT_PRIVATE_KEY_PEM}"
+  public-key-pem: "${JWT_PUBLIC_KEY_PEM}"
+
+---
+# PodDisruptionBudget: ensure at least 80% of test-engine pods available
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: test-engine-pdb
+  namespace: exam-platform
+spec:
+  minAvailable: "80%"
+  selector:
+    matchLabels:
+      app: test-engine
+
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: user-service-pdb
+  namespace: exam-platform
+spec:
+  minAvailable: 3
+  selector:
+    matchLabels:
+      app: user-service

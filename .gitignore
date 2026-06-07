@@ -1,0 +1,18 @@
+# Secrets
+.env
+
+# Java build output
+**/target/
+**/*.class
+**/*.jar
+!**/test*.jar
+
+# IDE
+.idea/
+*.iml
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db

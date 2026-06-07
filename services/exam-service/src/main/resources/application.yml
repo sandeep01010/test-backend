@@ -1,0 +1,54 @@
+server:
+  port: 8082
+  servlet:
+    context-path: /api/v1
+
+spring:
+  application:
+    name: exam-service
+
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/examplatform}
+    username: ${DB_USERNAME:examuser}
+    password: ${DB_PASSWORD:exampass}
+    hikari:
+      maximum-pool-size: 15
+      minimum-idle: 3
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+  data:
+    mongodb:
+      uri: ${MONGO_URI:mongodb://localhost:27017/exam_platform}
+      auto-index-creation: false
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+
+  kafka:
+    bootstrap-servers: ${KAFKA_SERVERS:localhost:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      acks: all
+      enable-idempotence: true
+
+exam:
+  paper:
+    cache-ttl-buffer-mins: 60   # cache persists for exam_duration + 60 mins
+  slot:
+    lock-ttl-seconds: 10        # distributed lock TTL for enrollment
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus,metrics

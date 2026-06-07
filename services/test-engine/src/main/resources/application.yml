@@ -1,0 +1,65 @@
+server:
+  port: 8083
+  servlet:
+    context-path: /api/v1
+
+spring:
+  application:
+    name: test-engine
+
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/examplatform}
+    username: ${DB_USERNAME:examuser}
+    password: ${DB_PASSWORD:exampass}
+    hikari:
+      maximum-pool-size: 20
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+
+  data:
+    mongodb:
+      uri: ${MONGO_URI:mongodb://localhost:27017/exam_platform}
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      # AOF persistence must be enabled on Redis server for zero data loss
+      lettuce:
+        pool:
+          max-active: 50
+          max-idle: 20
+
+  kafka:
+    bootstrap-servers: ${KAFKA_SERVERS:localhost:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      acks: all
+      enable-idempotence: true
+      retries: 3
+    consumer:
+      group-id: test-engine-consumer
+      auto-offset-reset: earliest
+      enable-auto-commit: false
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      properties:
+        spring.json.trusted.packages: "com.examplatform.*"
+
+test-engine:
+  autosave:
+    redis-interval-ms: 5000     # save to Redis every 5s
+    mongo-interval-ms: 15000    # flush to MongoDB every 15s
+  session:
+    max-reconnect-window-mins: 10  # allow resume within 10 min of disconnect
+  anti-cheat:
+    tab-switch-threshold: 3
+    min-answer-time-secs: 3
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus,metrics

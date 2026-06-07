@@ -1,0 +1,110 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: api-gateway
+  namespace: exam-platform
+  annotations:
+    service.beta.kubernetes.io/azure-load-balancer-resource-group: exam-rg
+spec:
+  type: LoadBalancer
+  selector:
+    app: api-gateway
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8080
+    - name: https
+      port: 443
+      targetPort: 8080
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: user-service
+  namespace: exam-platform
+spec:
+  type: ClusterIP
+  selector:
+    app: user-service
+  ports:
+    - port: 8081
+      targetPort: 8081
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: exam-service
+  namespace: exam-platform
+spec:
+  type: ClusterIP
+  selector:
+    app: exam-service
+  ports:
+    - port: 8082
+      targetPort: 8082
+
+---
+# Test Engine: sticky sessions for WebSocket
+apiVersion: v1
+kind: Service
+metadata:
+  name: test-engine
+  namespace: exam-platform
+  annotations:
+    # Azure Application Gateway session affinity for WebSocket
+    nginx.ingress.kubernetes.io/affinity: "cookie"
+    nginx.ingress.kubernetes.io/affinity-mode: "persistent"
+    nginx.ingress.kubernetes.io/session-cookie-name: "EXAM_SESSION"
+    nginx.ingress.kubernetes.io/session-cookie-max-age: "7200"
+spec:
+  type: ClusterIP
+  selector:
+    app: test-engine
+  ports:
+    - name: http
+      port: 8083
+      targetPort: 8083
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: result-service
+  namespace: exam-platform
+spec:
+  type: ClusterIP
+  selector:
+    app: result-service
+  ports:
+    - port: 8084
+      targetPort: 8084
+
+---
+# Pre-scaling CronJob — runs 30 min before scheduled exams
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: exam-pre-scaler
+  namespace: exam-platform
+spec:
+  # This is a placeholder — actual schedule comes from Exam Service webhook trigger
+  schedule: "0 5 * * *"  # 5am daily (override dynamically)
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          serviceAccountName: exam-scaler-sa
+          containers:
+            - name: scaler
+              image: bitnami/kubectl:1.29
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  kubectl scale deployment test-engine --replicas=200 -n exam-platform
+                  kubectl scale deployment user-service --replicas=50 -n exam-platform
+                  kubectl scale deployment exam-service --replicas=30 -n exam-platform
+                  echo "Pre-scaling complete for upcoming exam"
+          restartPolicy: OnFailure

@@ -1,0 +1,193 @@
+# Local development docker-compose
+# Production uses Kubernetes — this is for local dev/testing only
+
+networks:
+  exam-network:
+    driver: bridge
+
+volumes:
+  postgres-data:
+  mongodb-data:
+  redis-data:
+  kafka-data:
+  zookeeper-data:
+
+services:
+  # ============================================================
+  # Infrastructure
+  # ============================================================
+  postgres:
+    image: postgres:16-alpine
+    container_name: exam-postgres
+    networks: [exam-network]
+    environment:
+      POSTGRES_DB: examplatform
+      POSTGRES_USER: examuser
+      POSTGRES_PASSWORD: exampass
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    ports: ["5432:5432"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U examuser -d examplatform"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  mongodb:
+    image: mongo:7.0
+    container_name: exam-mongodb
+    networks: [exam-network]
+    environment:
+      MONGO_INITDB_DATABASE: exam_platform
+    volumes:
+      - mongodb-data:/data/db
+      - ../../db/mongodb/question_schema.js:/docker-entrypoint-initdb.d/01-schema.js
+    ports: ["27017:27017"]
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.runCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7.2-alpine
+    container_name: exam-redis
+    networks: [exam-network]
+    command: >
+      redis-server
+      --appendonly yes
+      --appendfsync everysec
+      --maxmemory 2gb
+      --maxmemory-policy allkeys-lru
+    volumes:
+      - redis-data:/data
+    ports: ["6379:6379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.6.0
+    container_name: exam-zookeeper
+    networks: [exam-network]
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    volumes: [zookeeper-data:/var/lib/zookeeper]
+
+  kafka:
+    image: confluentinc/cp-kafka:7.6.0
+    container_name: exam-kafka
+    networks: [exam-network]
+    depends_on: [zookeeper]
+    ports: ["9092:9092"]
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: true
+      KAFKA_LOG_RETENTION_HOURS: 168
+      KAFKA_COMPRESSION_TYPE: lz4
+    volumes: [kafka-data:/var/lib/kafka]
+
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: exam-kafka-ui
+    networks: [exam-network]
+    depends_on: [kafka]
+    ports: ["9000:8080"]
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
+
+  # ============================================================
+  # Microservices
+  # ============================================================
+  api-gateway:
+    build:
+      context: ../../
+      dockerfile: infra/docker/Dockerfile.api-gateway
+    container_name: exam-api-gateway
+    networks: [exam-network]
+    depends_on: [redis]
+    ports: ["8080:8080"]
+    environment:
+      REDIS_HOST: redis
+      JWT_PUBLIC_KEY_PEM: ${JWT_PUBLIC_KEY_PEM}
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/actuator/health"]
+      interval: 30s
+
+  user-service:
+    build:
+      context: ../../
+      dockerfile: infra/docker/Dockerfile.user-service
+    container_name: exam-user-service
+    networks: [exam-network]
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
+      kafka: {condition: service_started}
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/examplatform
+      DB_USERNAME: examuser
+      DB_PASSWORD: exampass
+      REDIS_HOST: redis
+      KAFKA_SERVERS: kafka:29092
+      JWT_PRIVATE_KEY_PEM: ${JWT_PRIVATE_KEY_PEM}
+      JWT_PUBLIC_KEY_PEM: ${JWT_PUBLIC_KEY_PEM}
+
+  exam-service:
+    build:
+      context: ../../
+      dockerfile: infra/docker/Dockerfile.exam-service
+    container_name: exam-exam-service
+    networks: [exam-network]
+    depends_on:
+      postgres: {condition: service_healthy}
+      mongodb: {condition: service_healthy}
+      redis: {condition: service_healthy}
+      kafka: {condition: service_started}
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/examplatform
+      DB_USERNAME: examuser
+      DB_PASSWORD: exampass
+      MONGO_URI: mongodb://mongodb:27017/exam_platform
+      REDIS_HOST: redis
+      KAFKA_SERVERS: kafka:29092
+
+  test-engine:
+    build:
+      context: ../../
+      dockerfile: infra/docker/Dockerfile.test-engine
+    container_name: exam-test-engine
+    networks: [exam-network]
+    depends_on:
+      postgres: {condition: service_healthy}
+      mongodb: {condition: service_healthy}
+      redis: {condition: service_healthy}
+      kafka: {condition: service_started}
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/examplatform
+      MONGO_URI: mongodb://mongodb:27017/exam_platform
+      REDIS_HOST: redis
+      KAFKA_SERVERS: kafka:29092
+
+  result-service:
+    build:
+      context: ../../
+      dockerfile: infra/docker/Dockerfile.result-service
+    container_name: exam-result-service
+    networks: [exam-network]
+    depends_on:
+      postgres: {condition: service_healthy}
+      mongodb: {condition: service_healthy}
+      redis: {condition: service_healthy}
+      kafka: {condition: service_started}
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/examplatform
+      MONGO_URI: mongodb://mongodb:27017/exam_platform
+      REDIS_HOST: redis
+      KAFKA_SERVERS: kafka:29092

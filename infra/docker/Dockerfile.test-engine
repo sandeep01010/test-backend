@@ -1,0 +1,21 @@
+FROM eclipse-temurin:21-jdk-alpine AS builder
+WORKDIR /build
+RUN apk add --no-cache maven
+COPY services/test-engine/pom.xml pom.xml
+COPY services/test-engine/src src
+RUN mvn -B -ntp package -DskipTests
+
+FROM gcr.io/distroless/java21-debian12:nonroot
+LABEL org.opencontainers.image.title="exam-platform/test-engine"
+LABEL org.opencontainers.image.version="1.0.0"
+WORKDIR /app
+COPY --from=builder /build/target/test-engine-1.0.0.jar app.jar
+EXPOSE 8083
+ENV JAVA_OPTS="\
+  -XX:+UseContainerSupport \
+  -XX:MaxRAMPercentage=75.0 \
+  -XX:+UseZGC \
+  -XX:+ZGenerational \
+  -Djava.security.egd=file:/dev/./urandom \
+  -Dspring.profiles.active=prod"
+ENTRYPOINT ["java", "-jar", "app.jar"]
