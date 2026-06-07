@@ -70,6 +70,14 @@ jobs:
           distribution: 'temurin'
           cache: 'maven'
 
+      - name: Compile all services (required for sonar.java.binaries)
+        run: |
+          for service in user-service exam-service test-engine result-service api-gateway; do
+            echo "Compiling $service..."
+            mvn -B -ntp compile -DskipTests \
+              -f services/$service/pom.xml
+          done
+
       - name: SonarCloud Analysis
         uses: SonarSource/sonarqube-scan-action@v5
         env:
@@ -80,7 +88,7 @@ jobs:
             -Dsonar.organization=${{ secrets.SONAR_ORGANIZATION }}
             -Dsonar.projectKey=${{ secrets.SONAR_PROJECT_KEY }}
             -Dsonar.sources=services
-            -Dsonar.java.binaries=services/**/target/classes
+            -Dsonar.java.binaries=services/user-service/target/classes,services/exam-service/target/classes,services/test-engine/target/classes,services/result-service/target/classes,services/api-gateway/target/classes
             -Dsonar.coverage.exclusions=**/dto/**,**/model/**,**/*Application.java
             -Dsonar.qualitygate.wait=true
 
