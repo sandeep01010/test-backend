@@ -7,7 +7,7 @@ on:
     branches: [main]
 
 env:
-  REGISTRY: examplatform.azurecr.io
+  REGISTRY: ghcr.io/sandeep01010
   AKS_CLUSTER: exam-aks
   AKS_RESOURCE_GROUP: exam-rg
 
@@ -141,19 +141,21 @@ jobs:
     runs-on: ubuntu-latest
     needs: [code-quality, security-scan]
     if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'
+    permissions:
+      contents: read
+      packages: write   # required to push to ghcr.io
     strategy:
       matrix:
         service: [user-service, exam-service, test-engine, result-service, api-gateway]
     steps:
       - uses: actions/checkout@v4
 
-      - name: Log in to Azure
-        uses: azure/login@v2
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
         with:
-          creds: ${{ secrets.AZURE_CREDENTIALS }}
-
-      - name: Log in to Azure Container Registry
-        run: az acr login --name ${{ env.REGISTRY }}
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Extract metadata
         id: meta
