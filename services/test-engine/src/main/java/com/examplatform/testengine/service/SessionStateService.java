@@ -37,6 +37,13 @@ public class SessionStateService {
     private static final String SESSION_KEY = "exam:session:%s:state";
     private static final String SESSION_TTL_HOURS = "2";
 
+    // Global live-monitoring counters (read by /sessions/metrics/live)
+    static final String GLOBAL_ACTIVE    = "metrics:sessions:active";
+    static final String GLOBAL_STARTED   = "metrics:sessions:started_total";
+    static final String GLOBAL_SUBMITTED = "metrics:sessions:submitted_total";
+    private static final String ANS_BUCKET = "metrics:ans:";   // + epochSecond
+    private static final int ANS_BUCKET_TTL = 20;
+
     // -------------------------------------------------------------------------
     // Session Lifecycle
     // -------------------------------------------------------------------------
@@ -62,8 +69,10 @@ public class SessionStateService {
         saveToRedis(state, durationSeconds + 7200);
         mongoRepository.save(state);
 
-        // Increment live counter
+        // Increment live counters (per-exam + global for monitoring)
         redisTemplate.opsForValue().increment("exam:live:" + examId + ":active_users");
+        redisTemplate.opsForValue().increment(GLOBAL_ACTIVE);
+        redisTemplate.opsForValue().increment(GLOBAL_STARTED);
 
         return state;
     }
@@ -112,6 +121,13 @@ public class SessionStateService {
 
         redisTemplate.opsForHash().put(key + ":answers", questionId, answerJson);
         redisTemplate.opsForHash().put(key, "lastSavedAt", Instant.now().toString());
+
+        // Live monitoring: bump the per-second answer bucket (used for answers/sec)
+        String bucket = ANS_BUCKET + Instant.now().getEpochSecond();
+        Long bucketCount = redisTemplate.opsForValue().increment(bucket);
+        if (bucketCount != null && bucketCount == 1L) {
+            redisTemplate.expire(bucket, Duration.ofSeconds(ANS_BUCKET_TTL));
+        }
 
         // Mark session as dirty for MongoDB flush
         dirtySessions.add(sessionId);
@@ -229,6 +245,38 @@ public class SessionStateService {
         // In production, use a Redis sorted set with expiry scores for efficiency
         // This is a simplified implementation
         log.debug("Running timeout enforcement check");
+    }
+
+    // -------------------------------------------------------------------------
+    // Live monitoring (super-admin dashboard)
+    // -------------------------------------------------------------------------
+
+    /** Aggregate, cluster-wide live metrics read from Redis counters. */
+    public Map<String, Object> getLiveMetrics() {
+        long active    = num(redisTemplate.opsForValue().get(GLOBAL_ACTIVE));
+        long started   = num(redisTemplate.opsForValue().get(GLOBAL_STARTED));
+        long submitted = num(redisTemplate.opsForValue().get(GLOBAL_SUBMITTED));
+
+        // answers/sec: average over the last 5 *complete* seconds
+        long now = Instant.now().getEpochSecond();
+        long sum = 0;
+        for (long s = now - 5; s < now; s++) {
+            sum += num(redisTemplate.opsForValue().get(ANS_BUCKET + s));
+        }
+        long answersPerSec = sum / 5;
+
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("activeSessions", Math.max(0, active));
+        m.put("startedTotal",   started);
+        m.put("submittedTotal", submitted);
+        m.put("answersPerSec",  answersPerSec);
+        m.put("sampledAt",      Instant.now().toString());
+        return m;
+    }
+
+    private long num(Object v) {
+        if (v == null) return 0;
+        try { return Long.parseLong(v.toString()); } catch (NumberFormatException e) { return 0; }
     }
 
     // -------------------------------------------------------------------------

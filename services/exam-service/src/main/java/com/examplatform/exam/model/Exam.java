@@ -29,6 +29,17 @@ public class Exam {
     @Column(name = "exam_type", nullable = false, length = 50)
     private String examType;
 
+    /** FK to exam_categories.code — nullable for legacy rows. Data-driven. */
+    @Column(name = "category_code", length = 40)
+    private String categoryCode;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "test_type", length = 40)
+    private TestType testType;
+
+    @Column(name = "total_questions")
+    private int totalQuestions;
+
     @Column(name = "created_by", nullable = false)
     private UUID createdBy;
 

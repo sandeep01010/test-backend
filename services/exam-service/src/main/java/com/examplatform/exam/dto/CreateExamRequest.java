@@ -18,6 +18,14 @@ public class CreateExamRequest {
     @NotBlank
     private String examType;
 
+    /** Category code (e.g. JEE_MAIN). Must reference an existing exam_categories row. */
+    @NotBlank
+    private String category;
+
+    /** FULL_MOCK | PREVIOUS_YEAR | SUBJECT_WISE | CHAPTER_WISE */
+    @NotNull
+    private com.examplatform.exam.model.TestType testType;
+
     @Positive
     private int durationMins;
 

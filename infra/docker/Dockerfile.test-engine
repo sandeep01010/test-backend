@@ -3,7 +3,10 @@ WORKDIR /build
 RUN apk add --no-cache maven
 COPY services/test-engine/pom.xml pom.xml
 COPY services/test-engine/src src
-RUN mvn -B -ntp package -DskipTests
+RUN --mount=type=cache,target=/root/.m2,sharing=locked \
+    mvn -B -ntp package -DskipTests \
+    -Dmaven.wagon.httpconnectionManager.ttlSeconds=120 \
+    -Dmaven.wagon.http.retryHandler.count=5
 
 FROM gcr.io/distroless/java21-debian12:nonroot
 LABEL org.opencontainers.image.title="exam-platform/test-engine"
@@ -11,11 +14,11 @@ LABEL org.opencontainers.image.version="1.0.0"
 WORKDIR /app
 COPY --from=builder /build/target/test-engine-1.0.0.jar app.jar
 EXPOSE 8083
-ENV JAVA_OPTS="\
-  -XX:+UseContainerSupport \
-  -XX:MaxRAMPercentage=75.0 \
-  -XX:+UseZGC \
-  -XX:+ZGenerational \
-  -Djava.security.egd=file:/dev/./urandom \
-  -Dspring.profiles.active=prod"
-ENTRYPOINT ["java", "-jar", "app.jar"]
+ENTRYPOINT ["java", \
+  "-XX:+UseContainerSupport", \
+  "-XX:MaxRAMPercentage=75.0", \
+  "-XX:+UseZGC", \
+  "-XX:+ZGenerational", \
+  "-Djava.security.egd=file:/dev/./urandom", \
+  "-Dspring.profiles.active=prod", \
+  "-jar", "app.jar"]

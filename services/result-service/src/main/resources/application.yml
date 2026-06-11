@@ -16,7 +16,15 @@ spring:
 
   jpa:
     hibernate:
-      ddl-auto: validate
+      ddl-auto: none
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    table: flyway_history_result
+    baseline-on-migrate: true
+    baseline-version: 0
+    out-of-order: false
 
   data:
     mongodb:

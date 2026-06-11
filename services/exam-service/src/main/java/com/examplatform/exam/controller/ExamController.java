@@ -12,6 +12,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @RestController
@@ -31,6 +32,40 @@ public class ExamController {
                 .body(examService.createExam(req, adminId));
     }
 
+    /**
+     * List/browse exams with optional filters.
+     * GET /exams?category=JEE_MAIN&testType=FULL_MOCK&status=PUBLISHED
+     */
+    @GetMapping
+    public ResponseEntity<List<ExamResponse>> listExams(
+            @RequestParam(required = false) String category,
+            @RequestParam(required = false) com.examplatform.exam.model.TestType testType,
+            @RequestParam(required = false, defaultValue = "PUBLISHED") String status,
+            @RequestAttribute(value = "userId", required = false) UUID studentId) {
+
+        com.examplatform.exam.model.Exam.ExamStatus st =
+                (status == null || status.isBlank() || "ALL".equalsIgnoreCase(status))
+                        ? null
+                        : com.examplatform.exam.model.Exam.ExamStatus.valueOf(status.toUpperCase());
+
+        return ResponseEntity.ok(examService.listExams(category, testType, st, studentId));
+    }
+
+    /** Admin: exams I created. */
+    @GetMapping("/mine")
+    @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN')")
+    public ResponseEntity<List<ExamResponse>> myExams(
+            @RequestAttribute("userId") UUID adminId) {
+        return ResponseEntity.ok(examService.listByAdmin(adminId));
+    }
+
+    /** Super-admin: aggregate analytics. */
+    @GetMapping("/admin/analytics")
+    @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN')")
+    public ResponseEntity<Map<String, Object>> analytics() {
+        return ResponseEntity.ok(examService.analytics());
+    }
+
     @GetMapping("/{examId}")
     public ResponseEntity<ExamResponse> getExam(@PathVariable UUID examId) {
         return ResponseEntity.ok(examService.getExam(examId));
@@ -43,6 +78,19 @@ public class ExamController {
             @Valid @RequestBody PublishExamRequest req,
             @RequestAttribute("userId") UUID adminId) {
         return ResponseEntity.ok(examService.publishExam(examId, adminId, req));
+    }
+
+    /**
+     * Start (or re-start) a practice attempt — no slot booking.
+     * Idempotently ensures an enrollment exists and bumps the attempt counter.
+     * Called by the "Attempt" / "Re-attempt" buttons.
+     */
+    @PostMapping("/{examId}/attempt")
+    @PreAuthorize("hasRole('STUDENT')")
+    public ResponseEntity<AttemptResponse> attempt(
+            @PathVariable UUID examId,
+            @RequestAttribute("userId") UUID studentId) {
+        return ResponseEntity.ok(examService.ensureAttempt(examId, studentId));
     }
 
     @PostMapping("/{examId}/enroll")

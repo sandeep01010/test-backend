@@ -23,6 +23,7 @@ import java.util.*;
 public class ExamService {
 
     private final ExamRepository examRepository;
+    private final ExamCategoryRepository categoryRepository;
     private final ExamSlotRepository slotRepository;
     private final EnrollmentRepository enrollmentRepository;
     private final RedisTemplate<String, Object> redisTemplate;
@@ -33,10 +34,20 @@ public class ExamService {
 
     @Transactional
     public ExamResponse createExam(CreateExamRequest req, UUID adminId) {
+        if (!categoryRepository.existsById(req.getCategory())) {
+            throw new IllegalArgumentException("Unknown category: " + req.getCategory());
+        }
+
+        int totalQuestions = req.getSections() == null ? 0 :
+                req.getSections().stream().mapToInt(CreateExamRequest.SectionDto::getMaxQuestions).sum();
+
         Exam exam = Exam.builder()
                 .title(req.getTitle())
                 .description(req.getDescription())
                 .examType(req.getExamType())
+                .categoryCode(req.getCategory())
+                .testType(req.getTestType())
+                .totalQuestions(totalQuestions)
                 .createdBy(adminId)
                 .durationMins(req.getDurationMins())
                 .totalMarks(req.getTotalMarks())
@@ -166,6 +177,99 @@ public class ExamService {
         return toResponse(exam);
     }
 
+    /**
+     * Ensure the student has an attempt record for this (slot-less) practice exam,
+     * creating a lightweight enrollment on first attempt and incrementing the
+     * attempt counter on re-attempts. Used directly by the "Attempt" / "Re-attempt"
+     * flow — no slot booking required.
+     */
+    @Transactional
+    public AttemptResponse ensureAttempt(UUID examId, UUID studentId) {
+        Exam exam = examRepository.findById(examId)
+                .orElseThrow(() -> new RuntimeException("Exam not found: " + examId));
+
+        if (exam.getStatus() != Exam.ExamStatus.PUBLISHED
+                && exam.getStatus() != Exam.ExamStatus.LIVE) {
+            throw new IllegalStateException("Exam is not open for attempts");
+        }
+
+        Enrollment enrollment = enrollmentRepository
+                .findByStudentIdAndExamId(studentId, examId)
+                .orElse(null);
+
+        boolean reattempt;
+        if (enrollment == null) {
+            enrollment = Enrollment.builder()
+                    .studentId(studentId)
+                    .examId(examId)
+                    .slot(null)                       // slot-less practice attempt
+                    .rollNumber(generateRollNumber(examId, studentId))
+                    .status(Enrollment.EnrollmentStatus.APPEARED)
+                    .attemptCount(1)
+                    .build();
+            reattempt = false;
+        } else {
+            enrollment.setAttemptCount(enrollment.getAttemptCount() + 1);
+            reattempt = true;
+        }
+        enrollment = enrollmentRepository.save(enrollment);
+
+        return AttemptResponse.builder()
+                .enrollmentId(enrollment.getId())
+                .examId(examId)
+                .attemptNo(enrollment.getAttemptCount())
+                .durationMins(exam.getDurationMins())
+                .reattempt(reattempt)
+                .build();
+    }
+
+    /**
+     * List exams filtered by category + test type + status.
+     * If studentId is provided, marks which exams the student has already attempted.
+     */
+    public List<ExamResponse> listExams(String category,
+                                        com.examplatform.exam.model.TestType testType,
+                                        Exam.ExamStatus status,
+                                        UUID studentId) {
+        List<Exam> exams = examRepository.filter(
+                (category == null || category.isBlank()) ? null : category,
+                testType, status);
+
+        Set<UUID> attempted = studentId == null ? Set.of()
+                : new HashSet<>(enrollmentRepository.findExamIdsByStudentId(studentId));
+
+        return exams.stream().map(e -> {
+            ExamResponse r = toResponse(e);
+            r.setAttempted(attempted.contains(e.getId()));
+            return r;
+        }).toList();
+    }
+
+    /** Exams created by a given admin. */
+    public List<ExamResponse> listByAdmin(UUID adminId) {
+        return examRepository.findByCreatedByOrderByCreatedAtDesc(adminId)
+                .stream().map(this::toResponse).toList();
+    }
+
+    /** Aggregate analytics for the super-admin dashboard. */
+    public Map<String, Object> analytics() {
+        Map<String, Long> byStatus = new LinkedHashMap<>();
+        for (Object[] row : examRepository.countByStatus())
+            byStatus.put(String.valueOf(row[0]), ((Number) row[1]).longValue());
+
+        Map<String, Long> byCategory = new LinkedHashMap<>();
+        for (Object[] row : examRepository.countByCategory())
+            byCategory.put(row[0] == null ? "UNCATEGORISED" : String.valueOf(row[0]),
+                           ((Number) row[1]).longValue());
+
+        return Map.of(
+                "totalExams",       examRepository.count(),
+                "totalEnrollments", enrollmentRepository.count(),
+                "examsByStatus",    byStatus,
+                "examsByCategory",  byCategory
+        );
+    }
+
     public List<SlotResponse> getAvailableSlots(UUID examId) {
         return slotRepository.findByExamIdAndActiveTrueOrderBySlotDateAscStartTimeAsc(examId)
                 .stream()
@@ -194,12 +298,17 @@ public class ExamService {
         return ExamResponse.builder()
                 .id(exam.getId())
                 .title(exam.getTitle())
+                .description(exam.getDescription())
                 .examType(exam.getExamType())
+                .category(exam.getCategoryCode())
+                .testType(exam.getTestType() == null ? null : exam.getTestType().name())
+                .totalQuestions(exam.getTotalQuestions())
                 .durationMins(exam.getDurationMins())
                 .totalMarks(exam.getTotalMarks())
                 .status(exam.getStatus().name())
                 .startTime(exam.getStartTime())
                 .endTime(exam.getEndTime())
+                .instructions(exam.getInstructions())
                 .build();
     }
 }

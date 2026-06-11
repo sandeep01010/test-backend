@@ -35,12 +35,15 @@ spring:
                 key-resolver: "#{@userKeyResolver}"
 
         # Exam Service
+        # Optional auth: browsing (categories, published exams) is public;
+        # protected actions (create/publish/enroll/attempt/paper) are guarded
+        # by @PreAuthorize in the service, which denies anonymous requests.
         - id: exam-service
           uri: http://exam-service:8082
           predicates:
             - Path=/api/v1/exams/**, /api/v1/questions/**
           filters:
-            - JwtAuthFilter
+            - OptionalJwtAuthFilter
             - name: RequestRateLimiter
               args:
                 redis-rate-limiter.replenishRate: 100
@@ -99,6 +102,7 @@ spring:
             allowedOriginPatterns:
               - "https://*.examplatform.com"
               - "http://localhost:3000"
+              - "http://frontend:3000"
             allowedMethods: [GET, POST, PUT, DELETE, OPTIONS]
             allowedHeaders: ["*"]
             allowCredentials: true
@@ -122,7 +126,7 @@ spring:
       password: ${REDIS_PASSWORD:}
 
 jwt:
-  public-key-pem: ${JWT_PUBLIC_KEY_PEM}
+  public-key-pem: ${JWT_PUBLIC_KEY_PEM:GENERATE_ME}
 
 resilience4j:
   circuitbreaker:

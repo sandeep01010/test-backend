@@ -21,6 +21,20 @@ public class SessionController {
     private final SessionStateService sessionService;
 
     /**
+     * Live platform metrics for the super-admin dashboard.
+     * Admin-only: the API Gateway verifies the JWT and forwards the role as
+     * the trusted X-User-Role header.
+     */
+    @GetMapping("/metrics/live")
+    public ResponseEntity<Map<String, Object>> liveMetrics(
+            @RequestHeader(value = "X-User-Role", required = false) String role) {
+        if (role == null || !role.toUpperCase().contains("ADMIN")) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
+        return ResponseEntity.ok(sessionService.getLiveMetrics());
+    }
+
+    /**
      * Start or resume an exam session.
      * If session already exists and is ACTIVE, returns existing state (resume).
      */

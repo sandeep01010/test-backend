@@ -24,9 +24,15 @@ public class Enrollment {
     @Column(name = "exam_id", nullable = false)
     private UUID examId;
 
+    /** Null for slot-less practice tests (mocks, subject/chapter-wise). */
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "slot_id", nullable = false)
+    @JoinColumn(name = "slot_id")
     private ExamSlot slot;
+
+    /** How many times the student has started this exam (re-attempts). */
+    @Column(name = "attempt_count", nullable = false)
+    @Builder.Default
+    private int attemptCount = 0;
 
     @Column(name = "roll_number", nullable = false, unique = true, length = 20)
     private String rollNumber;

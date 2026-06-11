@@ -27,10 +27,10 @@ public class UserService {
     private final KafkaTemplate<String, Object> kafkaTemplate;
 
     private static final Argon2 ARGON2 = Argon2Factory.create(Argon2Factory.Argon2Types.ARGON2id);
-    // Argon2id params: iterations=3, memory=65536KB, parallelism=4
-    private static final int ITERATIONS   = 3;
-    private static final int MEMORY_KB    = 65536;
-    private static final int PARALLELISM  = 4;
+    // Argon2id params — reduced for dev; tune up for production
+    private static final int ITERATIONS   = 2;
+    private static final int MEMORY_KB    = 4096;
+    private static final int PARALLELISM  = 1;
 
     @Transactional
     public AuthResponse register(RegisterRequest req) {

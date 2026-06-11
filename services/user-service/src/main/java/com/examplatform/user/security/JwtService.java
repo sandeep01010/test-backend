@@ -37,8 +37,27 @@ public class JwtService {
             @Value("${jwt.private-key-pem}") String privateKeyPem,
             @Value("${jwt.public-key-pem}") String publicKeyPem,
             StringRedisTemplate redisTemplate) throws Exception {
-        this.privateKey = loadPrivateKey(privateKeyPem);
-        this.publicKey = loadPublicKey(publicKeyPem);
+        PrivateKey resolvedPrivate = null;
+        PublicKey  resolvedPublic  = null;
+        if (!"GENERATE_ME".equals(privateKeyPem) && privateKeyPem != null && !privateKeyPem.isBlank()) {
+            try {
+                resolvedPrivate = loadPrivateKey(privateKeyPem);
+                resolvedPublic  = loadPublicKey(publicKeyPem);
+            } catch (Exception e) {
+                log.warn("JWT keys set but could not be decoded ({}). Falling back to ephemeral dev key pair.", e.getMessage());
+            }
+        }
+        if (resolvedPrivate == null) {
+            log.warn("Generating ephemeral dev key pair. Tokens will NOT survive restarts. " +
+                     "Set valid JWT_PRIVATE_KEY_PEM / JWT_PUBLIC_KEY_PEM for production.");
+            java.security.KeyPairGenerator kpg = java.security.KeyPairGenerator.getInstance("RSA");
+            kpg.initialize(2048);
+            java.security.KeyPair kp = kpg.generateKeyPair();
+            resolvedPrivate = kp.getPrivate();
+            resolvedPublic  = kp.getPublic();
+        }
+        this.privateKey = resolvedPrivate;
+        this.publicKey  = resolvedPublic;
         this.redisTemplate = redisTemplate;
     }
 
@@ -115,22 +134,32 @@ public class JwtService {
     }
 
     private PrivateKey loadPrivateKey(String pem) throws Exception {
-        String stripped = pem
-                .replace("-----BEGIN PRIVATE KEY-----", "")
-                .replace("-----END PRIVATE KEY-----", "")
-                .replaceAll("\\s", "");
-        byte[] decoded = Base64.getDecoder().decode(stripped);
-        PKCS8EncodedKeySpec spec = new PKCS8EncodedKeySpec(decoded);
-        return KeyFactory.getInstance("RSA").generatePrivate(spec);
+        String stripped = pem.trim();
+        byte[] decoded;
+        if (stripped.startsWith("-----")) {
+            stripped = stripped
+                    .replace("-----BEGIN PRIVATE KEY-----", "")
+                    .replace("-----END PRIVATE KEY-----", "")
+                    .replaceAll("\\s", "");
+            decoded = Base64.getDecoder().decode(stripped);
+        } else {
+            decoded = Base64.getUrlDecoder().decode(stripped);
+        }
+        return KeyFactory.getInstance("RSA").generatePrivate(new PKCS8EncodedKeySpec(decoded));
     }
 
     private PublicKey loadPublicKey(String pem) throws Exception {
-        String stripped = pem
-                .replace("-----BEGIN PUBLIC KEY-----", "")
-                .replace("-----END PUBLIC KEY-----", "")
-                .replaceAll("\\s", "");
-        byte[] decoded = Base64.getDecoder().decode(stripped);
-        X509EncodedKeySpec spec = new X509EncodedKeySpec(decoded);
-        return KeyFactory.getInstance("RSA").generatePublic(spec);
+        String stripped = pem.trim();
+        byte[] decoded;
+        if (stripped.startsWith("-----")) {
+            stripped = stripped
+                    .replace("-----BEGIN PUBLIC KEY-----", "")
+                    .replace("-----END PUBLIC KEY-----", "")
+                    .replaceAll("\\s", "");
+            decoded = Base64.getDecoder().decode(stripped);
+        } else {
+            decoded = Base64.getUrlDecoder().decode(stripped);
+        }
+        return KeyFactory.getInstance("RSA").generatePublic(new X509EncodedKeySpec(decoded));
     }
 }

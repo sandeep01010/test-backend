@@ -1,6 +1,8 @@
 # Local development docker-compose
 # Production uses Kubernetes — this is for local dev/testing only
 
+name: exam-platform
+
 networks:
   exam-network:
     driver: bridge
@@ -114,11 +116,11 @@ services:
     depends_on: [redis]
     ports: ["8080:8080"]
     environment:
-      REDIS_HOST: redis
+      SPRING_DATA_REDIS_HOST: redis
       JWT_PUBLIC_KEY_PEM: ${JWT_PUBLIC_KEY_PEM}
+    # distroless image has no wget/curl — disable healthcheck for local dev
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:8080/actuator/health"]
-      interval: 30s
+      disable: true
 
   user-service:
     build:
@@ -126,16 +128,17 @@ services:
       dockerfile: infra/docker/Dockerfile.user-service
     container_name: exam-user-service
     networks: [exam-network]
+    ports: ["8081:8081"]
     depends_on:
       postgres: {condition: service_healthy}
       redis: {condition: service_healthy}
       kafka: {condition: service_started}
     environment:
-      DB_URL: jdbc:postgresql://postgres:5432/examplatform
-      DB_USERNAME: examuser
-      DB_PASSWORD: exampass
-      REDIS_HOST: redis
-      KAFKA_SERVERS: kafka:29092
+      SPRING_DATASOURCE_URL: "jdbc:postgresql://postgres:5432/examplatform"
+      SPRING_DATASOURCE_USERNAME: examuser
+      SPRING_DATASOURCE_PASSWORD: exampass
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
       JWT_PRIVATE_KEY_PEM: ${JWT_PRIVATE_KEY_PEM}
       JWT_PUBLIC_KEY_PEM: ${JWT_PUBLIC_KEY_PEM}
 
@@ -145,18 +148,19 @@ services:
       dockerfile: infra/docker/Dockerfile.exam-service
     container_name: exam-exam-service
     networks: [exam-network]
+    ports: ["8082:8082"]
     depends_on:
       postgres: {condition: service_healthy}
       mongodb: {condition: service_healthy}
       redis: {condition: service_healthy}
       kafka: {condition: service_started}
     environment:
-      DB_URL: jdbc:postgresql://postgres:5432/examplatform
-      DB_USERNAME: examuser
-      DB_PASSWORD: exampass
-      MONGO_URI: mongodb://mongodb:27017/exam_platform
-      REDIS_HOST: redis
-      KAFKA_SERVERS: kafka:29092
+      SPRING_DATASOURCE_URL: "jdbc:postgresql://postgres:5432/examplatform"
+      SPRING_DATASOURCE_USERNAME: examuser
+      SPRING_DATASOURCE_PASSWORD: exampass
+      SPRING_DATA_MONGODB_URI: "mongodb://mongodb:27017/exam_platform"
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
 
   test-engine:
     build:
@@ -164,16 +168,19 @@ services:
       dockerfile: infra/docker/Dockerfile.test-engine
     container_name: exam-test-engine
     networks: [exam-network]
+    ports: ["8083:8083"]
     depends_on:
       postgres: {condition: service_healthy}
       mongodb: {condition: service_healthy}
       redis: {condition: service_healthy}
       kafka: {condition: service_started}
     environment:
-      DB_URL: jdbc:postgresql://postgres:5432/examplatform
-      MONGO_URI: mongodb://mongodb:27017/exam_platform
-      REDIS_HOST: redis
-      KAFKA_SERVERS: kafka:29092
+      SPRING_DATASOURCE_URL: "jdbc:postgresql://postgres:5432/examplatform"
+      SPRING_DATASOURCE_USERNAME: examuser
+      SPRING_DATASOURCE_PASSWORD: exampass
+      SPRING_DATA_MONGODB_URI: "mongodb://mongodb:27017/exam_platform"
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
 
   result-service:
     build:
@@ -181,13 +188,17 @@ services:
       dockerfile: infra/docker/Dockerfile.result-service
     container_name: exam-result-service
     networks: [exam-network]
+    ports: ["8084:8084"]
     depends_on:
       postgres: {condition: service_healthy}
       mongodb: {condition: service_healthy}
       redis: {condition: service_healthy}
       kafka: {condition: service_started}
     environment:
-      DB_URL: jdbc:postgresql://postgres:5432/examplatform
-      MONGO_URI: mongodb://mongodb:27017/exam_platform
-      REDIS_HOST: redis
-      KAFKA_SERVERS: kafka:29092
+      SPRING_DATASOURCE_URL: "jdbc:postgresql://postgres:5432/examplatform"
+      SPRING_DATASOURCE_USERNAME: examuser
+      SPRING_DATASOURCE_PASSWORD: exampass
+      SPRING_DATA_MONGODB_URI: "mongodb://mongodb:27017/exam_platform"
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+
