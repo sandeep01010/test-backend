@@ -15,6 +15,9 @@ import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
+// Note: List<String> answer type in saveAnswer signature
+import java.util.List;
+
 /**
  * Core service managing real-time exam session state.
  *
@@ -102,8 +105,23 @@ public class SessionStateService {
     // -------------------------------------------------------------------------
 
     public void saveAnswer(String sessionId, String questionId,
-                           String answer, boolean markedForReview, long timeSpentSecs) {
+                           List<String> answer, boolean markedForReview, long timeSpentSecs) {
         String key = String.format(SESSION_KEY, sessionId);
+
+        // Detect answer change: read existing entry to see if non-empty answer is being replaced
+        boolean wasChanged = false;
+        try {
+            Object existing = redisTemplate.opsForHash().get(key + ":answers", questionId);
+            if (existing != null) {
+                SessionState.AnswerEntry prev = objectMapper.readValue(
+                        existing.toString(), SessionState.AnswerEntry.class);
+                boolean hadAnswer = prev.getAnswer() != null && !prev.getAnswer().isEmpty();
+                boolean hasNewAnswer = answer != null && !answer.isEmpty();
+                // Keep wasChanged sticky: once changed, always changed
+                wasChanged = prev.isWasChanged()
+                        || (hadAnswer && hasNewAnswer && !prev.getAnswer().equals(answer));
+            }
+        } catch (Exception ignored) {}
 
         // Atomic hash field update in Redis — O(1)
         String answerJson;
@@ -112,6 +130,7 @@ public class SessionStateService {
                     .answer(answer)
                     .markedForReview(markedForReview)
                     .timeSpentSecs(timeSpentSecs)
+                    .wasChanged(wasChanged)
                     .lastUpdated(Instant.now())
                     .build();
             answerJson = objectMapper.writeValueAsString(entry);
@@ -135,7 +154,7 @@ public class SessionStateService {
         // Publish to Kafka for monitoring
         kafkaTemplate.send("answer-events", sessionId,
                 Map.of("sessionId", sessionId, "questionId", questionId,
-                       "hasAnswer", answer != null && !answer.isBlank(),
+                       "hasAnswer", answer != null && !answer.isEmpty(),
                        "timestamp", Instant.now().toString()));
     }
 
@@ -155,8 +174,10 @@ public class SessionStateService {
 
         for (Map.Entry<String, Map<String, Object>> entry : answers.entrySet()) {
             try {
+                @SuppressWarnings("unchecked")
+                List<String> ans = (List<String>) entry.getValue().get("answer");
                 SessionState.AnswerEntry ae = SessionState.AnswerEntry.builder()
-                        .answer((String) entry.getValue().get("answer"))
+                        .answer(ans)
                         .markedForReview(Boolean.TRUE.equals(entry.getValue().get("markedForReview")))
                         .timeSpentSecs(((Number) entry.getValue().getOrDefault("timeSpent", 0)).longValue())
                         .lastUpdated(Instant.now())

@@ -19,7 +19,7 @@ public class Result {
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
-    @Column(name = "enrollment_id", unique = true)
+    @Column(name = "enrollment_id")
     private UUID enrollmentId;
 
     @Column(name = "student_id", nullable = false)
@@ -56,6 +56,18 @@ public class Result {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     private ResultStatus status;
+
+    @Column(name = "session_id")
+    private UUID sessionId;
+
+    @Column(name = "total_marks")
+    private Double totalMarks;
+
+    @Column(name = "attempt_number")
+    private Integer attemptNumber;
+
+    @Column(name = "submitted_at")
+    private Instant submittedAt;
 
     @Column(name = "evaluated_at")
     private Instant evaluatedAt;

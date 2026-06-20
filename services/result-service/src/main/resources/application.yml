@@ -43,11 +43,16 @@ spring:
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
       value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
       properties:
-        spring.json.trusted.packages: "com.examplatform.*"
+        spring.json.trusted.packages: "com.examplatform.*, java.util.*"
+        spring.json.value.default.type: "java.util.HashMap"
+        spring.json.use.type.headers: false
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
       acks: all
+
+services:
+  exam-service-url: ${EXAM_SERVICE_URL:http://exam-service:8082}
 
 management:
   endpoints:

@@ -27,4 +27,13 @@ public interface QuestionRepository extends MongoRepository<Question, String> {
     List<Question> findByExamTypeAndSubjects(String examType, List<String> subjects);
 
     long countByExamTypeAndSubjectAndActiveTrue(String examType, String subject);
+
+    List<Question> findByExamIdOrderBySubjectAscCreatedAtAsc(String examId);
+
+    void deleteByExamId(String examId);
+
+    long countByExamId(String examId);
+
+    /** Fallback for legacy questions uploaded before examId field existed. */
+    List<Question> findByExamTypeAndCreatedByOrderBySubjectAscCreatedAtAsc(String examType, String createdBy);
 }

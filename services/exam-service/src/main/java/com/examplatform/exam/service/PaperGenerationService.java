@@ -132,7 +132,7 @@ public class PaperGenerationService {
         private double marks;
         private double negativeMarks;
 
-        @lombok.Data @lombok.AllArgsConstructor
+        @lombok.Data @lombok.NoArgsConstructor @lombok.AllArgsConstructor
         public static class OptionDto {
             private String id;
             private String text;

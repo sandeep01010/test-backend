@@ -51,6 +51,11 @@ exam:
   slot:
     lock-ttl-seconds: 10        # distributed lock TTL for enrollment
 
+image:
+  storage:
+    dir: ${IMAGE_STORAGE_DIR:/app/images}
+    base-url: ${IMAGE_STORAGE_BASE_URL:http://localhost:8082/api/v1/exams/images}
+
 management:
   endpoints:
     web:

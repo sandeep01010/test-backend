@@ -2,7 +2,6 @@ package com.examplatform.gateway.config;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -13,7 +12,7 @@ import java.util.Map;
 @RequestMapping("/fallback")
 public class FallbackController {
 
-    @GetMapping("/exam")
+    @RequestMapping("/exam")
     public ResponseEntity<Map<String, Object>> examFallback() {
         return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(Map.of(
                 "error", "SERVICE_UNAVAILABLE",
@@ -23,7 +22,7 @@ public class FallbackController {
         ));
     }
 
-    @GetMapping("/session")
+    @RequestMapping("/session")
     public ResponseEntity<Map<String, Object>> sessionFallback() {
         return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(Map.of(
                 "error", "SERVICE_UNAVAILABLE",

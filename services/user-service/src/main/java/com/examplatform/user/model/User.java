@@ -49,6 +49,18 @@ public class User {
     @Column(name = "is_active")
     private boolean active = true;
 
+    @Column(name = "is_subscribed")
+    private boolean subscribed = false;
+
+    @Column(name = "subscribed_at")
+    private Instant subscribedAt;
+
+    @Column(name = "subscribed_until")
+    private Instant subscribedUntil;
+
+    @Column(name = "subscription_plan", length = 50)
+    private String subscriptionPlan;
+
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
     private Instant createdAt;

@@ -9,10 +9,12 @@ import de.mkammerer.argon2.Argon2Factory;
 import io.jsonwebtoken.Claims;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
 import java.util.Map;
 import java.util.UUID;
 
@@ -25,6 +27,9 @@ public class UserService {
     private final JwtService jwtService;
     private final OtpService otpService;
     private final KafkaTemplate<String, Object> kafkaTemplate;
+
+    @Value("${jwt.access-token-expiry-ms:3600000}")
+    private long accessTokenExpiryMs;
 
     private static final Argon2 ARGON2 = Argon2Factory.create(Argon2Factory.Argon2Types.ARGON2id);
     // Argon2id params — reduced for dev; tune up for production
@@ -126,6 +131,37 @@ public class UserService {
         jwtService.blacklistToken(accessToken);
     }
 
+    @Transactional
+    public void activateSubscription(UUID userId, String plan, int durationDays) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("User not found"));
+        Instant now   = Instant.now();
+        Instant until = now.plusSeconds((long) durationDays * 86400);
+        user.setSubscribed(true);
+        user.setSubscribedAt(now);
+        user.setSubscribedUntil(until);
+        user.setSubscriptionPlan(plan);
+        userRepository.save(user);
+        kafkaTemplate.send("user-events", userId.toString(),
+                Map.of("event", "USER_SUBSCRIBED", "userId", userId, "plan", plan));
+        log.info("User {} subscribed to plan {} until {}", userId, plan, until);
+    }
+
+    @Transactional(readOnly = true)
+    public Map<String, Object> getSubscriptionStatus(UUID userId) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("User not found"));
+        boolean active = user.isSubscribed()
+                && user.getSubscribedUntil() != null
+                && Instant.now().isBefore(user.getSubscribedUntil());
+        return Map.of(
+                "subscribed",         active,
+                "plan",               user.getSubscriptionPlan() != null ? user.getSubscriptionPlan() : "",
+                "subscribedAt",       user.getSubscribedAt() != null ? user.getSubscribedAt().toString() : "",
+                "subscribedUntil",    user.getSubscribedUntil() != null ? user.getSubscribedUntil().toString() : ""
+        );
+    }
+
     private AuthResponse buildAuthResponse(User user) {
         String accessToken  = jwtService.generateAccessToken(user);
         String refreshToken = jwtService.generateRefreshToken(user);
@@ -134,7 +170,7 @@ public class UserService {
                 .accessToken(accessToken)
                 .refreshToken(refreshToken)
                 .tokenType("Bearer")
-                .expiresIn(900)
+                .expiresIn(accessTokenExpiryMs / 1000)
                 .userId(user.getId())
                 .email(user.getEmail())
                 .role(user.getRole().name())

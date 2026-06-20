@@ -2,11 +2,12 @@ package com.examplatform.testengine.dto;
 
 import jakarta.validation.constraints.NotBlank;
 import lombok.Data;
+import java.util.List;
 
 @Data
 public class SaveAnswerRequest {
     @NotBlank private String questionId;
-    private String answer;          // null = clear answer
+    private List<String> answer;    // null or empty = clear answer; MCQ=["A"], numerical=["42"]
     private boolean markedForReview;
     private long timeSpentSecs;
 }

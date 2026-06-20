@@ -8,11 +8,17 @@ RUN --mount=type=cache,target=/root/.m2,sharing=locked \
     -Dmaven.wagon.httpconnectionManager.ttlSeconds=120 \
     -Dmaven.wagon.http.retryHandler.count=5
 
+# Create /app/images with nonroot ownership (UID 65532 = distroless nonroot)
+FROM alpine AS dirs
+RUN mkdir -p /app/images && chown -R 65532:65532 /app/images
+
 FROM gcr.io/distroless/java21-debian12:nonroot
 LABEL org.opencontainers.image.title="exam-platform/exam-service"
 LABEL org.opencontainers.image.version="1.0.0"
 WORKDIR /app
 COPY --from=builder /build/target/exam-service-1.0.0.jar app.jar
+# Pre-create /app/images owned by nonroot so the Docker volume initialises with correct perms
+COPY --from=dirs --chown=65532:65532 /app/images /app/images
 EXPOSE 8082
 ENTRYPOINT ["java", \
   "-XX:+UseContainerSupport", \

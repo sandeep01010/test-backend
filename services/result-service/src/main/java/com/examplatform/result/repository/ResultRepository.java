@@ -16,6 +16,12 @@ public interface ResultRepository extends JpaRepository<Result, UUID> {
 
     Optional<Result> findByExamIdAndStudentId(UUID examId, UUID studentId);
 
+    List<Result> findByStudentIdAndExamIdOrderByAttemptNumberAsc(UUID studentId, UUID examId);
+
+    int countByStudentIdAndExamId(UUID studentId, UUID examId);
+
+    Optional<Result> findBySessionId(UUID sessionId);
+
     List<Result> findByExamIdOrderByRankAsc(UUID examId);
 
     @Query("SELECT r FROM Result r WHERE r.examId = :examId ORDER BY r.totalScore DESC")

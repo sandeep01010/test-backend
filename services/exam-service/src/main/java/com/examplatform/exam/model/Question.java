@@ -71,6 +71,11 @@ public class Question {
     @Indexed
     private List<String> tags;
 
+    /** Links this question to the specific uploaded exam (set on bulk upload). */
+    @Field("exam_id")
+    @Indexed
+    private String examId;
+
     @Field("is_active")
     private boolean active = true;
 
@@ -85,8 +90,10 @@ public class Question {
 
     @Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
     public static class Option {
+        @Field("id")          // force "id" not "_id" in MongoDB embedded doc
         private String id;
         private String text;
+        @Field("image_url")
         private String imageUrl;
     }
 

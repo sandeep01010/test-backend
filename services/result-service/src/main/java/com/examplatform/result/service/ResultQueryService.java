@@ -17,6 +17,32 @@ public class ResultQueryService {
     private final ResultRepository resultRepository;
     private final JdbcTemplate jdbcTemplate;
 
+    public List<Map<String, Object>> getStudentAttempts(UUID examId, UUID studentId) {
+        return resultRepository.findByStudentIdAndExamIdOrderByAttemptNumberAsc(studentId, examId)
+                .stream()
+                .map(r -> {
+                    Map<String, Object> m = new LinkedHashMap<>();
+                    m.put("attemptNumber", r.getAttemptNumber() != null ? r.getAttemptNumber() : 1);
+                    m.put("sessionId",     r.getSessionId() != null ? r.getSessionId().toString() : r.getId().toString());
+                    m.put("examId",        r.getExamId().toString());
+                    m.put("score",         r.getTotalScore() != null ? r.getTotalScore() : 0);
+                    m.put("totalMarks",    r.getTotalMarks() != null ? r.getTotalMarks() : 0);
+                    double pct = (r.getTotalMarks() != null && r.getTotalMarks() > 0)
+                            ? (r.getTotalScore() / r.getTotalMarks()) * 100 : 0;
+                    m.put("percentage",    Math.round(pct * 10.0) / 10.0);
+                    m.put("rank",          r.getRank());
+                    m.put("correctCount",  r.getCorrectCount());
+                    m.put("wrongCount",    r.getWrongCount());
+                    m.put("skippedCount",  r.getSkippedCount());
+                    m.put("status",        r.getStatus() != null ? r.getStatus().name() : "EVALUATED");
+                    m.put("submittedAt",   r.getSubmittedAt() != null
+                            ? r.getSubmittedAt().toString()
+                            : (r.getEvaluatedAt() != null ? r.getEvaluatedAt().toString() : r.getCreatedAt().toString()));
+                    return m;
+                })
+                .toList();
+    }
+
     public Map<String, Object> getStudentResult(UUID examId, UUID studentId) {
         return resultRepository.findByExamIdAndStudentId(examId, studentId)
                 .map(r -> {

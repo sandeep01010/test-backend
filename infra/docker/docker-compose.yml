@@ -13,6 +13,7 @@ volumes:
   redis-data:
   kafka-data:
   zookeeper-data:
+  exam-images:
 
 services:
   # ============================================================
@@ -161,6 +162,10 @@ services:
       SPRING_DATA_MONGODB_URI: "mongodb://mongodb:27017/exam_platform"
       SPRING_DATA_REDIS_HOST: redis
       SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      IMAGE_STORAGE_DIR: /app/images
+      IMAGE_STORAGE_BASE_URL: "http://localhost:8082/api/v1/exams/images"
+    volumes:
+      - exam-images:/app/images
 
   test-engine:
     build:
@@ -201,4 +206,25 @@ services:
       SPRING_DATA_MONGODB_URI: "mongodb://mongodb:27017/exam_platform"
       SPRING_DATA_REDIS_HOST: redis
       SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+
+  payment-service:
+    build:
+      context: ../../
+      dockerfile: infra/docker/Dockerfile.payment-service
+    container_name: exam-payment-service
+    networks: [exam-network]
+    ports: ["8085:8085"]
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
+      kafka: {condition: service_started}
+    environment:
+      SPRING_DATASOURCE_URL: "jdbc:postgresql://postgres:5432/examplatform"
+      SPRING_DATASOURCE_USERNAME: examuser
+      SPRING_DATASOURCE_PASSWORD: exampass
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      PAYMENT_GATEWAY_KEY_ID: rzp_test_examforge
+      PAYMENT_GATEWAY_KEY_SECRET: examforge_secret_key_2024
+      PAYMENT_DEV_MODE: "true"
 

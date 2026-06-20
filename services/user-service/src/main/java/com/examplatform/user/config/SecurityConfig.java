@@ -25,6 +25,7 @@ public class SecurityConfig {
                     "/auth/login",
                     "/auth/otp/**",
                     "/auth/refresh",
+                    "/admin/users/**",   // auth enforced by gateway + role check in controller
                     "/actuator/health",
                     "/actuator/prometheus"
                 ).permitAll()

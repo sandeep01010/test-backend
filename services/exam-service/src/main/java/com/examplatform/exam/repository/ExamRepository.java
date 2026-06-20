@@ -16,6 +16,8 @@ public interface ExamRepository extends JpaRepository<Exam, UUID> {
 
     List<Exam> findByCreatedByOrderByCreatedAtDesc(UUID adminId);
 
+    List<Exam> findAllByOrderByCreatedAtDesc();
+
     @Query("SELECT e FROM Exam e WHERE e.status = 'PUBLISHED' AND e.startTime > :now ORDER BY e.startTime ASC")
     List<Exam> findUpcomingExams(Instant now);
 

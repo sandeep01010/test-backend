@@ -11,6 +11,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
+import java.util.UUID;
 
 @RestController
 @RequestMapping("/auth")
@@ -57,5 +58,23 @@ public class AuthController {
             userService.logout(authHeader.substring(7));
         }
         return ResponseEntity.ok(Map.of("message", "Logged out successfully"));
+    }
+
+    /** POST /auth/subscribe — activate subscription after payment confirmation */
+    @PostMapping("/subscribe")
+    public ResponseEntity<Map<String, String>> subscribe(
+            @RequestAttribute("userId") UUID userId,
+            @RequestBody Map<String, String> body) {
+        String plan        = body.getOrDefault("plan", "PRO_ANNUAL");
+        int    durationDays = Integer.parseInt(body.getOrDefault("durationDays", "365"));
+        userService.activateSubscription(userId, plan, durationDays);
+        return ResponseEntity.ok(Map.of("status", "SUBSCRIBED", "plan", plan));
+    }
+
+    /** GET /auth/subscription-status — check current user's subscription */
+    @GetMapping("/subscription-status")
+    public ResponseEntity<Map<String, Object>> subscriptionStatus(
+            @RequestAttribute("userId") UUID userId) {
+        return ResponseEntity.ok(userService.getSubscriptionStatus(userId));
     }
 }

@@ -1,0 +1,24 @@
+FROM eclipse-temurin:21-jdk-alpine AS builder
+WORKDIR /build
+RUN apk add --no-cache maven
+COPY services/payment-service/pom.xml pom.xml
+COPY services/payment-service/src src
+RUN --mount=type=cache,target=/root/.m2,sharing=locked \
+    mvn -B -ntp package -DskipTests \
+    -Dmaven.wagon.httpconnectionManager.ttlSeconds=120 \
+    -Dmaven.wagon.http.retryHandler.count=5
+
+FROM gcr.io/distroless/java21-debian12:nonroot
+LABEL org.opencontainers.image.title="exam-platform/payment-service"
+LABEL org.opencontainers.image.version="1.0.0"
+WORKDIR /app
+COPY --from=builder /build/target/payment-service-1.0.0.jar app.jar
+EXPOSE 8085
+ENTRYPOINT ["java", \
+  "-XX:+UseContainerSupport", \
+  "-XX:MaxRAMPercentage=75.0", \
+  "-XX:+UseZGC", \
+  "-XX:+ZGenerational", \
+  "-Djava.security.egd=file:/dev/./urandom", \
+  "-Dspring.profiles.active=prod", \
+  "-jar", "app.jar"]

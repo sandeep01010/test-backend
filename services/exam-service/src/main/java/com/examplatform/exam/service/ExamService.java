@@ -245,10 +245,12 @@ public class ExamService {
         }).toList();
     }
 
-    /** Exams created by a given admin. */
-    public List<ExamResponse> listByAdmin(UUID adminId) {
-        return examRepository.findByCreatedByOrderByCreatedAtDesc(adminId)
-                .stream().map(this::toResponse).toList();
+    /** Exams created by a given admin. SUPER_ADMIN sees all exams. */
+    public List<ExamResponse> listByAdmin(UUID adminId, boolean isSuperAdmin) {
+        List<Exam> exams = isSuperAdmin
+                ? examRepository.findAllByOrderByCreatedAtDesc()
+                : examRepository.findByCreatedByOrderByCreatedAtDesc(adminId);
+        return exams.stream().map(this::toResponse).toList();
     }
 
     /** Aggregate analytics for the super-admin dashboard. */

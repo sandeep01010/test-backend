@@ -45,6 +45,7 @@ public class GatewayContextFilter extends OncePerRequestFilter {
         }
 
         if (role != null && !role.isBlank()) {
+            request.setAttribute("userRole", role.trim().toUpperCase());
             var authority = new SimpleGrantedAuthority("ROLE_" + role.trim().toUpperCase());
             var auth = new UsernamePasswordAuthenticationToken(
                     email != null ? email : userId, null, List.of(authority));

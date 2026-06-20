@@ -8,6 +8,19 @@ spring:
   cloud:
     gateway:
       routes:
+        # User Service — Auth routes that require JWT (subscribe, subscription-status)
+        - id: user-service-auth-protected
+          uri: http://user-service:8081
+          predicates:
+            - Path=/api/v1/auth/subscribe, /api/v1/auth/subscription-status
+          filters:
+            - JwtAuthFilter
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 20
+                redis-rate-limiter.burstCapacity: 40
+                key-resolver: "#{@userKeyResolver}"
+
         # User Service — Auth routes (no JWT required)
         - id: user-service-auth
           uri: http://user-service:8081
@@ -20,6 +33,20 @@ spring:
                 redis-rate-limiter.burstCapacity: 40
                 key-resolver: "#{@ipKeyResolver}"
             - RewritePath=/api/v1/auth/(?<segment>.*), /api/v1/auth/${segment}
+
+        # User Service — Admin user management (ADMIN / SUPER_ADMIN)
+        - id: user-service-admin
+          uri: http://user-service:8081
+          predicates:
+            - Path=/api/v1/admin/users, /api/v1/admin/users/**
+          filters:
+            - JwtAuthFilter
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 50
+                redis-rate-limiter.burstCapacity: 100
+                key-resolver: "#{@userKeyResolver}"
+            - RewritePath=/api/v1/admin/users(?<segment>.*), /api/v1/admin/users${segment}
 
         # User Service — Protected routes
         - id: user-service-protected
@@ -34,14 +61,43 @@ spring:
                 redis-rate-limiter.burstCapacity: 200
                 key-resolver: "#{@userKeyResolver}"
 
-        # Exam Service
-        # Optional auth: browsing (categories, published exams) is public;
-        # protected actions (create/publish/enroll/attempt/paper) are guarded
-        # by @PreAuthorize in the service, which denies anonymous requests.
+        # Exam Service — Image upload (no circuit breaker; must resolve before catch-all)
+        - id: exam-service-images
+          uri: http://exam-service:8082
+          predicates:
+            - Path=/api/v1/exams/images/upload, /api/v1/exams/images/bulk-upload
+          filters:
+            - JwtAuthFilter
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 20
+                redis-rate-limiter.burstCapacity: 40
+                key-resolver: "#{@userKeyResolver}"
+
+        # Exam Service — Auth-required endpoints (must come before the public catch-all)
+        # These endpoints need a valid JWT; expired tokens return 401 → frontend redirects to login.
+        - id: exam-service-auth
+          uri: http://exam-service:8082
+          predicates:
+            - Path=/api/v1/exams/*/paper/**, /api/v1/exams/*/attempt, /api/v1/exams/*/enroll, /api/v1/exams/*/approve, /api/v1/exams/*/preview, /api/v1/exams/upload, /api/v1/exams/upload/**, /api/v1/exams/mine, /api/v1/exams/*/publish, /api/v1/exams/admin/**
+          filters:
+            - JwtAuthFilter
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 100
+                redis-rate-limiter.burstCapacity: 300
+                key-resolver: "#{@userKeyResolver}"
+            - name: CircuitBreaker
+              args:
+                name: exam-service-cb
+                fallbackUri: forward:/fallback/exam
+
+        # Exam Service — Public browse (categories, published exam list, exam metadata)
+        # Optional auth: logged-in users get personalised data; anonymous users can still browse.
         - id: exam-service
           uri: http://exam-service:8082
           predicates:
-            - Path=/api/v1/exams/**, /api/v1/questions/**
+            - Path=/api/v1/exams, /api/v1/exams/**, /api/v1/questions, /api/v1/questions/**
           filters:
             - OptionalJwtAuthFilter
             - name: RequestRateLimiter
@@ -94,6 +150,48 @@ spring:
                 redis-rate-limiter.replenishRate: 50
                 redis-rate-limiter.burstCapacity: 100
                 key-resolver: "#{@userKeyResolver}"
+
+        # Payment Service — Webhook (no JWT, Razorpay calls this)
+        - id: payment-service-webhook
+          uri: http://payment-service:8085
+          predicates:
+            - Path=/api/v1/payments/webhook
+          filters:
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 50
+                redis-rate-limiter.burstCapacity: 100
+                key-resolver: "#{@ipKeyResolver}"
+
+        # Payment Service — Admin endpoints
+        - id: payment-service-admin
+          uri: http://payment-service:8085
+          predicates:
+            - Path=/api/v1/payments/admin/**
+          filters:
+            - JwtAuthFilter
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 50
+                redis-rate-limiter.burstCapacity: 100
+                key-resolver: "#{@userKeyResolver}"
+
+        # Payment Service — Student endpoints (JWT required)
+        - id: payment-service
+          uri: http://payment-service:8085
+          predicates:
+            - Path=/api/v1/payments/**
+          filters:
+            - JwtAuthFilter
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 30
+                redis-rate-limiter.burstCapacity: 60
+                key-resolver: "#{@userKeyResolver}"
+            - name: CircuitBreaker
+              args:
+                name: payment-service-cb
+                fallbackUri: forward:/fallback/payment
 
       # Global CORS
       globalcors:

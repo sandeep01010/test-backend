@@ -9,6 +9,7 @@ import org.springframework.data.mongodb.core.mapping.Field;
 import java.io.Serializable;
 import java.time.Instant;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -61,9 +62,11 @@ public class SessionState implements Serializable {
 
     @Getter @Setter @Builder @NoArgsConstructor @AllArgsConstructor
     public static class AnswerEntry implements Serializable {
-        private String answer;              // selected option ID or numerical value
+        private List<String> answer;        // ["A"] for MCQ, ["42.5"] for numerical, empty = cleared
         private boolean markedForReview;
         private long timeSpentSecs;
         private Instant lastUpdated;
+        /** True when the student changed a previously non-empty answer to a different one. */
+        private boolean wasChanged;
     }
 }
