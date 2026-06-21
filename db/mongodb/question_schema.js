@@ -16,10 +16,10 @@ db.createCollection('questions', {
       bsonType: 'object',
       required: ['exam_type', 'subject', 'type', 'question_text', 'marks'],
       properties: {
-        exam_type: {
-          bsonType: 'string',
-          enum: ['JEE_MAIN', 'JEE_ADVANCED', 'NEET', 'CUET', 'GATE', 'CAT', 'CUSTOM']
-        },
+        // No enum here: exam categories are managed dynamically via the admin
+        // Categories page (Postgres exam_categories table), so a hardcoded list
+        // here would drift out of sync and reject valid new categories (e.g. SSC).
+        exam_type: { bsonType: 'string' },
         subject: { bsonType: 'string' },
         chapter: { bsonType: 'string' },
         topic: { bsonType: 'string' },
@@ -59,6 +59,27 @@ db.createCollection('questions', {
           properties: {
             min: { bsonType: 'double' },
             max: { bsonType: 'double' }
+          }
+        },
+        // MATCH_THE_FOLLOWING only — List-I/List-II table rows, e.g. {label: "P", text: "..."}.
+        match_list_left: {
+          bsonType: ['array', 'null'],
+          items: {
+            bsonType: 'object',
+            properties: {
+              label: { bsonType: 'string' },
+              text: { bsonType: 'string' }
+            }
+          }
+        },
+        match_list_right: {
+          bsonType: ['array', 'null'],
+          items: {
+            bsonType: 'object',
+            properties: {
+              label: { bsonType: 'string' },
+              text: { bsonType: 'string' }
+            }
           }
         },
         explanation: { bsonType: 'string' },

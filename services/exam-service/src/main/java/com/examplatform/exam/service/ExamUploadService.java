@@ -212,6 +212,8 @@ public class ExamUploadService {
                     numMin = q.getCorrectRange().getMin();
                     numMax = q.getCorrectRange().getMax();
                 }
+                List<ExamPreviewResponse.MatchItemDto> matchLeft = toPreviewMatchItems(q.getMatchListLeft());
+                List<ExamPreviewResponse.MatchItemDto> matchRight = toPreviewMatchItems(q.getMatchListRight());
                 pqs.add(ExamPreviewResponse.PreviewQuestion.builder()
                         .questionId(q.getId())
                         .qNo(qNo++)
@@ -224,6 +226,8 @@ public class ExamUploadService {
                         .questionHtml(q.getQuestionHtml())
                         .questionImageUrls(q.getQuestionImageUrls())
                         .options(opts)
+                        .matchListLeft(matchLeft)
+                        .matchListRight(matchRight)
                         .correctAnswer(q.getCorrectAnswer())
                         .correctAnswers(q.getCorrectAnswers())
                         .numericalMin(numMin)
@@ -257,6 +261,14 @@ public class ExamUploadService {
 
     private int computeTotalMarks(List<Question> questions) {
         return questions.stream().mapToInt(q -> (int) q.getMarks()).sum();
+    }
+
+    private List<ExamPreviewResponse.MatchItemDto> toPreviewMatchItems(List<Question.MatchItem> items) {
+        if (items == null) return null;
+        return items.stream()
+                .map(i -> ExamPreviewResponse.MatchItemDto.builder()
+                        .label(i.getLabel()).text(i.getText()).build())
+                .collect(Collectors.toList());
     }
 
     private String capitalize(String s) {

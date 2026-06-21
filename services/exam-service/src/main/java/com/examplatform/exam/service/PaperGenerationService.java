@@ -100,6 +100,9 @@ public class PaperGenerationService {
                     .collect(Collectors.toList());
         }
 
+        List<PaperQuestion.MatchItemDto> matchLeft = toMatchItemDtos(q.getMatchListLeft());
+        List<PaperQuestion.MatchItemDto> matchRight = toMatchItemDtos(q.getMatchListRight());
+
         return PaperQuestion.builder()
                 .questionId(q.getId())
                 .position(position)
@@ -111,9 +114,18 @@ public class PaperGenerationService {
                 .questionHtml(q.getQuestionHtml())
                 .questionImageUrls(q.getQuestionImageUrls())
                 .options(options)
+                .matchListLeft(matchLeft)
+                .matchListRight(matchRight)
                 .marks(q.getMarks())
                 .negativeMarks(q.getNegativeMarks())
                 .build();
+    }
+
+    private List<PaperQuestion.MatchItemDto> toMatchItemDtos(List<Question.MatchItem> items) {
+        if (items == null) return null;
+        return items.stream()
+                .map(i -> new PaperQuestion.MatchItemDto(i.getLabel(), i.getText()))
+                .collect(Collectors.toList());
     }
 
     // DTO for paper question (no correct answer)
@@ -129,6 +141,8 @@ public class PaperGenerationService {
         private String questionHtml;
         private List<String> questionImageUrls;
         private List<OptionDto> options;
+        private List<MatchItemDto> matchListLeft;   // MATCH_THE_FOLLOWING only — List-I
+        private List<MatchItemDto> matchListRight;  // MATCH_THE_FOLLOWING only — List-II
         private double marks;
         private double negativeMarks;
 
@@ -137,6 +151,12 @@ public class PaperGenerationService {
             private String id;
             private String text;
             private String imageUrl;
+        }
+
+        @lombok.Data @lombok.NoArgsConstructor @lombok.AllArgsConstructor
+        public static class MatchItemDto {
+            private String label;
+            private String text;
         }
     }
 }
