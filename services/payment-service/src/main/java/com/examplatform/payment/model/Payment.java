@@ -63,6 +63,14 @@ public class Payment {
     @Column(name = "duration_days")
     private int durationDays;
 
+    /** Set only for category/group-scoped orders (the "buy this category" flow) — null
+     *  for the original global Pro/Basic plan orders, which are unaffected by this. */
+    @Column(name = "scope_type", length = 16)
+    private String scopeType;
+
+    @Column(name = "scope_code", length = 40)
+    private String scopeCode;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 16)
     @Builder.Default

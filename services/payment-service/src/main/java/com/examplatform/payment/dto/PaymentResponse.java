@@ -33,6 +33,8 @@ public class PaymentResponse {
     private Instant createdAt;
     private Instant updatedAt;
     private Instant expiresAt;
+    private String scopeType;
+    private String scopeCode;
 
     public static PaymentResponse from(Payment payment) {
         return PaymentResponse.builder()
@@ -53,6 +55,8 @@ public class PaymentResponse {
                 .createdAt(payment.getCreatedAt())
                 .updatedAt(payment.getUpdatedAt())
                 .expiresAt(payment.getExpiresAt())
+                .scopeType(payment.getScopeType())
+                .scopeCode(payment.getScopeCode())
                 .build();
     }
 }

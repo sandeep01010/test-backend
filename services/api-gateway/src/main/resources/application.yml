@@ -234,6 +234,17 @@ resilience4j:
         permittedNumberOfCallsInHalfOpenState: 5
         waitDurationInOpenState: 30s
         failureRateThreshold: 50
+  # CRITICAL: without this, Spring Cloud Gateway's circuit-breaker filter falls back to an
+  # undocumented 1-SECOND default call timeout. Any backend call that occasionally runs past
+  # 1s (cold JVM/JIT warmup, a GC pause, MongoDB connection-pool lazy-init on the first real
+  # request) gets aborted by the gateway and counted as a circuit-breaker failure — even though
+  # the backend itself never errors. Enough of those within slidingWindowSize trips the breaker
+  # open for 30s, during which every request gets the fallback immediately. This was the cause
+  # of "session start fails the first time, works after a reload/retry."
+  timelimiter:
+    configs:
+      default:
+        timeout-duration: 10s
 
 management:
   endpoints:

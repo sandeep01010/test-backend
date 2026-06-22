@@ -34,6 +34,13 @@ public class ExamCategoryService {
                 .stream().map(this::toDto).toList();
     }
 
+    /** Single category by code — used by payment-service to fetch the authoritative price. */
+    public CategoryDto getByCode(String code) {
+        return categoryRepository.findById(code)
+                .map(this::toDto)
+                .orElseThrow(() -> new RuntimeException("Category not found: " + code));
+    }
+
     /**
      * Per-category counts grouped by test type, for the student dashboard.
      * Counts only PUBLISHED exams. attemptedCount is per-student.
@@ -76,6 +83,7 @@ public class ExamCategoryService {
                     .counts(byType)
                     .totalTests(total)
                     .attemptedCount(attempted.getOrDefault(cat.getCode(), 0L))
+                    .priceInPaise(cat.getPriceInPaise())
                     .build());
         }
         return out;
@@ -126,11 +134,22 @@ public class ExamCategoryService {
         categoryRepository.save(cat);
     }
 
+    /** Super-admin-only price update — deliberately separate from update() so a regular
+     *  ADMIN editing title/tag/etc. via the general endpoint can never touch pricing. */
+    @Transactional
+    public CategoryDto updatePrice(String code, long priceInPaise) {
+        ExamCategory cat = categoryRepository.findById(code)
+                .orElseThrow(() -> new RuntimeException("Category not found: " + code));
+        cat.setPriceInPaise(priceInPaise);
+        return toDto(categoryRepository.save(cat));
+    }
+
     private CategoryDto toDto(ExamCategory c) {
         return CategoryDto.builder()
                 .code(c.getCode()).title(c.getTitle()).tag(c.getTag())
                 .color(c.getColor()).description(c.getDescription())
                 .displayOrder(c.getDisplayOrder()).active(c.isActive())
+                .priceInPaise(c.getPriceInPaise())
                 .build();
     }
 }

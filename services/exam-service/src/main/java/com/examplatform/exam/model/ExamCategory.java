@@ -43,6 +43,11 @@ public class ExamCategory {
     @Column(nullable = false)
     private boolean active = true;
 
+    /** Price in paise for 1 year of access to this category's locked exams. 0 = free.
+     *  Settable only via the dedicated SUPER_ADMIN-only price endpoint. */
+    @Column(name = "price_in_paise")
+    private long priceInPaise = 0;
+
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
     private Instant createdAt;

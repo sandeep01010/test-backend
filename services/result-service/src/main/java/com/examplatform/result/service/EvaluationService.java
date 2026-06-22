@@ -231,29 +231,9 @@ public class EvaluationService {
         // MCQ / MULTI_SELECT: compare as sorted sets of option letters
         List<String> studentSorted = studentAnswers.stream()
                 .map(Object::toString).map(String::toUpperCase).sorted().toList();
-        List<String> correctSorted = splitCorrectAnswerLetters(correctAnswer);
+        List<String> correctSorted = AnswerMatching.splitLetters(correctAnswer);
 
         return studentSorted.equals(correctSorted);
-    }
-
-    /**
-     * MULTI_SELECT correct answers can be written either comma/pipe-separated ("A,C") or as
-     * concatenated letters with no separator ("AC" — the format the Excel template and LLM
-     * extraction pipeline both use). Handle both so a no-separator answer doesn't silently
-     * fail to match every student's individually-selected options.
-     */
-    private List<String> splitCorrectAnswerLetters(String correctAnswer) {
-        if (correctAnswer.contains(",") || correctAnswer.contains("|")) {
-            return Arrays.stream(correctAnswer.split("[,|]"))
-                    .map(String::trim).map(String::toUpperCase).filter(s -> !s.isEmpty())
-                    .sorted().toList();
-        }
-        String trimmed = correctAnswer.trim().toUpperCase();
-        if (trimmed.length() > 1 && trimmed.chars().allMatch(c -> c >= 'A' && c <= 'Z')) {
-            // Concatenated single-letter options, e.g. "AC" -> ["A", "C"]
-            return trimmed.chars().mapToObj(c -> String.valueOf((char) c)).sorted().toList();
-        }
-        return List.of(trimmed);
     }
 
     private void saveResult(String sessionId, String enrollmentId, String studentId,

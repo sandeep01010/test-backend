@@ -120,9 +120,10 @@ public class DetailedResultService {
             double negMarks = Math.abs(getDouble(qDoc, "negative_marks", 1.0));
             String correctAnswer = qDoc.getString("correct_answer");
 
-            List<String> correctAnswerList = correctAnswer != null
-                    ? List.of(correctAnswer.split("[,|]"))
-                    : List.of();
+            // Handles both comma/pipe-separated ("A,C") and concatenated ("AC") MULTI_SELECT
+            // answers; numeric values (e.g. "42" or a "40.5-43.5" range) safely fall through
+            // unsplit since they aren't all-letters.
+            List<String> correctAnswerList = AnswerMatching.splitLetters(correctAnswer);
 
             String status;
             double marksAwarded;
@@ -130,7 +131,7 @@ public class DetailedResultService {
                 status = "SKIPPED";
                 marksAwarded = 0;
             } else {
-                boolean correct = evaluate(studentAnswers, correctAnswer, type);
+                boolean correct = evaluate(studentAnswers, correctAnswer, type, qDoc.get("correct_range", Document.class));
                 if (correct) {
                     status = "CORRECT";
                     marksAwarded = marks;
@@ -205,21 +206,31 @@ public class DetailedResultService {
         return List.of();
     }
 
-    private boolean evaluate(List<String> studentAnswers, String correctAnswer, String type) {
+    private boolean evaluate(List<String> studentAnswers, String correctAnswer, String type, Document correctRange) {
         if (studentAnswers == null || studentAnswers.isEmpty()) return false;
-        if (correctAnswer == null || correctAnswer.isBlank()) return false;
 
         if ("NUMERICAL".equalsIgnoreCase(type)) {
             try {
                 double sv = Double.parseDouble(studentAnswers.get(0).toString().trim());
+                // Prefer the min/max range when present — correctAnswer alone can be a
+                // non-numeric range string like "40.5-43.5", which would otherwise fail to
+                // parse and silently mark every answer wrong for that question.
+                if (correctRange != null) {
+                    Double min = toDoubleOrNull(correctRange.get("min"));
+                    Double max = toDoubleOrNull(correctRange.get("max"));
+                    if (min != null && max != null) {
+                        return sv >= min - 1e-9 && sv <= max + 1e-9;
+                    }
+                }
+                if (correctAnswer == null || correctAnswer.isBlank()) return false;
                 double cv = Double.parseDouble(correctAnswer.trim());
                 return Math.abs(sv - cv) < 0.01;
             } catch (NumberFormatException e) { return false; }
         }
+        if (correctAnswer == null || correctAnswer.isBlank()) return false;
         List<String> studentSorted = studentAnswers.stream()
                 .map(s -> s.toUpperCase().trim()).sorted().toList();
-        List<String> correctSorted = Arrays.stream(correctAnswer.split("[,|]"))
-                .map(s -> s.toUpperCase().trim()).filter(s -> !s.isEmpty()).sorted().toList();
+        List<String> correctSorted = AnswerMatching.splitLetters(correctAnswer);
         return studentSorted.equals(correctSorted);
     }
 
@@ -285,5 +296,10 @@ public class DetailedResultService {
         Object v = doc.get(field);
         if (v == null) return def;
         try { return ((Number) v).doubleValue(); } catch (ClassCastException e) { return def; }
+    }
+
+    private Double toDoubleOrNull(Object v) {
+        if (v == null) return null;
+        try { return ((Number) v).doubleValue(); } catch (ClassCastException e) { return null; }
     }
 }

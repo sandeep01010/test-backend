@@ -46,6 +46,22 @@ public class ExamCategoryController {
         return ResponseEntity.ok(categoryService.listAll());
     }
 
+    /** Public: single category by code — used by payment-service to fetch the
+     *  authoritative price (and by anything else that needs one category's details). */
+    @GetMapping("/{code}")
+    public ResponseEntity<CategoryDto> getByCode(@PathVariable String code) {
+        return ResponseEntity.ok(categoryService.getByCode(code));
+    }
+
+    /** Super-admin only: set this category's 1-year access price. Deliberately separate
+     *  from the general update() endpoint so a regular ADMIN can never touch pricing. */
+    @PutMapping("/{code}/price")
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    public ResponseEntity<CategoryDto> updatePrice(
+            @PathVariable String code, @Valid @RequestBody UpdatePriceRequest req) {
+        return ResponseEntity.ok(categoryService.updatePrice(code, req.getPriceInPaise()));
+    }
+
     @PostMapping
     @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN')")
     public ResponseEntity<CategoryDto> create(@Valid @RequestBody UpsertCategoryRequest req) {

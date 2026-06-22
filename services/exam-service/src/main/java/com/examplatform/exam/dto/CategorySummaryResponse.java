@@ -15,4 +15,5 @@ public class CategorySummaryResponse {
     private Map<String, Long> counts;   // { FULL_MOCK: 15, PREVIOUS_YEAR: 18, ... }
     private long totalTests;
     private long attemptedCount;
+    private long priceInPaise;
 }
