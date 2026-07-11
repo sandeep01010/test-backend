@@ -152,8 +152,12 @@ public class EvaluationService {
             String subject       = q.getString("subject");
             String type          = q.getString("type");
 
+            Document range = q.get("correct_range", Document.class);
+            Double rangeMin = range != null ? toDoubleOrNull(range.get("min")) : null;
+            Double rangeMax = range != null ? toDoubleOrNull(range.get("max")) : null;
+
             key.put(qId, new QuestionKey(correctAnswer, marks, negMarks,
-                    subject != null ? subject : "GENERAL", type));
+                    subject != null ? subject : "GENERAL", type, rangeMin, rangeMax));
         }
         return key;
     }
@@ -211,6 +215,12 @@ public class EvaluationService {
         if ("NUMERICAL".equalsIgnoreCase(key.type())) {
             try {
                 double studentVal = Double.parseDouble(studentAnswers.get(0).toString().trim());
+                // Prefer the min/max range when present — correctAnswer alone can be a non-numeric
+                // range string like "40.5-43.5", which would otherwise fail to parse below and
+                // silently mark every answer wrong for that question.
+                if (key.correctRangeMin() != null && key.correctRangeMax() != null) {
+                    return studentVal >= key.correctRangeMin() - 1e-9 && studentVal <= key.correctRangeMax() + 1e-9;
+                }
                 double correctVal = Double.parseDouble(correctAnswer.trim());
                 return Math.abs(studentVal - correctVal) < 0.01;
             } catch (NumberFormatException e) {
@@ -218,12 +228,10 @@ public class EvaluationService {
             }
         }
 
-        // MCQ_SINGLE / MCQ_MULTIPLE: compare as sorted sets
+        // MCQ / MULTI_SELECT: compare as sorted sets of option letters
         List<String> studentSorted = studentAnswers.stream()
                 .map(Object::toString).map(String::toUpperCase).sorted().toList();
-        List<String> correctSorted = Arrays.stream(correctAnswer.split("[,|]"))
-                .map(String::trim).map(String::toUpperCase).filter(s -> !s.isEmpty())
-                .sorted().toList();
+        List<String> correctSorted = AnswerMatching.splitLetters(correctAnswer);
 
         return studentSorted.equals(correctSorted);
     }
@@ -286,6 +294,11 @@ public class EvaluationService {
         return new ExamConfig(0, 0);
     }
 
+    private Double toDoubleOrNull(Object v) {
+        if (v == null) return null;
+        try { return ((Number) v).doubleValue(); } catch (ClassCastException e) { return null; }
+    }
+
     private double getDouble(Document doc, String field, double defaultVal) {
         Object v = doc.get(field);
         if (v == null) return defaultVal;
@@ -299,7 +312,9 @@ public class EvaluationService {
         double marks,
         double negMarks,
         String subject,
-        String type
+        String type,
+        Double correctRangeMin,
+        Double correctRangeMax
     ) {}
 
     private record EvaluationResult(

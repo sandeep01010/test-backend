@@ -3,8 +3,10 @@ package com.examplatform.exam.dto;
 import lombok.Builder;
 import lombok.Data;
 
+import java.util.List;
+
 @Data @Builder
-public class CategoryDto {
+public class CategoryGroupDto {
     private String code;
     private String title;
     private String tag;
@@ -12,5 +14,6 @@ public class CategoryDto {
     private String description;
     private int displayOrder;
     private boolean active;
+    private List<String> memberCodes;
     private long priceInPaise;
 }

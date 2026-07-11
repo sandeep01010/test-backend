@@ -73,6 +73,12 @@ public class Exam {
     @Column(name = "show_result_immediately")
     private boolean showResultImmediately = false;
 
+    /** Manual per-exam paywall toggle, independent of category/group price — admin decides
+     *  which specific papers need an active access grant to attempt. Free papers (locked =
+     *  false) stay attemptable by anyone regardless of subscription. */
+    @Column(name = "locked")
+    private boolean locked = false;
+
     @OneToMany(mappedBy = "exam", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     @Builder.Default
     private List<ExamSection> sections = new ArrayList<>();

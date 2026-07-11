@@ -44,6 +44,8 @@ public class ExcelParserService {
     private static final String COL_SOLUTION_TEXT   = "SOLUTION_TEXT";
     private static final String COL_SOLUTION_IMAGE  = "SOLUTION_IMAGE_URL";
     private static final String COL_TAGS            = "TAGS";
+    private static final String COL_MATCH_LEFT      = "MATCH_LEFT";
+    private static final String COL_MATCH_RIGHT     = "MATCH_RIGHT";
 
     public ParseResult parse(MultipartFile file) throws IOException {
         try (Workbook wb = new XSSFWorkbook(file.getInputStream())) {
@@ -118,10 +120,19 @@ public class ExcelParserService {
         double marksCorrect  = dbl(row, col, COL_MARKS_CORRECT, 4.0);
         double marksNegative = dbl(row, col, COL_MARKS_NEGATIVE, type.equals("NUMERICAL") ? 0.0 : -1.0);
 
-        // Build options for MCQ
+        // Build options for MCQ (and MATCH_THE_FOLLOWING, whose answer choices are still a
+        // single A/B/C/D pick — each option text is a complete proposed List-I/List-II mapping)
         List<Question.Option> options = null;
-        if ("MCQ".equals(type) || "MULTI_SELECT".equals(type)) {
+        if ("MCQ".equals(type) || "MULTI_SELECT".equals(type) || "MATCH_THE_FOLLOWING".equals(type)) {
             options = buildOptions(row, col);
+        }
+
+        // MATCH_THE_FOLLOWING: List-I/List-II table, "LABEL: text" per line
+        List<Question.MatchItem> matchLeft = null;
+        List<Question.MatchItem> matchRight = null;
+        if ("MATCH_THE_FOLLOWING".equals(type)) {
+            matchLeft = parseMatchItems(str(row, col, COL_MATCH_LEFT, ""));
+            matchRight = parseMatchItems(str(row, col, COL_MATCH_RIGHT, ""));
         }
 
         // Numerical range: correct answer can be "42" or "40.5-43.5"
@@ -162,8 +173,11 @@ public class ExcelParserService {
                 .questionImageUrls(qImgs)
                 .options(options)
                 .correctAnswer(correctRaw.isBlank() ? null :
-                        "MCQ".equals(type) ? correctRaw.toUpperCase() : correctRaw.trim())
+                        ("MCQ".equals(type) || "MATCH_THE_FOLLOWING".equals(type))
+                                ? correctRaw.toUpperCase() : correctRaw.trim())
                 .correctRange(numericalRange)
+                .matchListLeft(matchLeft)
+                .matchListRight(matchRight)
                 .explanation(str(row, col, COL_SOLUTION_TEXT, ""))
                 .marks(marksCorrect)
                 .negativeMarks(marksNegative)
@@ -194,6 +208,23 @@ public class ExcelParserService {
             }
         }
         return opts.isEmpty() ? null : opts;
+    }
+
+    /** Parses MATCH_LEFT/MATCH_RIGHT cell content: one "LABEL: text" pair per line. */
+    private List<Question.MatchItem> parseMatchItems(String raw) {
+        if (raw == null || raw.isBlank()) return null;
+        List<Question.MatchItem> items = new ArrayList<>();
+        for (String line : raw.split("\r?\n")) {
+            line = line.trim();
+            if (line.isEmpty()) continue;
+            int sep = line.indexOf(':');
+            if (sep == -1) continue; // malformed line — skip rather than guess
+            items.add(Question.MatchItem.builder()
+                    .label(line.substring(0, sep).trim())
+                    .text(line.substring(sep + 1).trim())
+                    .build());
+        }
+        return items.isEmpty() ? null : items;
     }
 
     // ── helpers ────────────────────────────────────────────────────────────

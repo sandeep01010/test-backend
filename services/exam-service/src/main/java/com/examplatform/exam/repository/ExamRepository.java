@@ -33,6 +33,18 @@ public interface ExamRepository extends JpaRepository<Exam, UUID> {
                       com.examplatform.exam.model.TestType testType,
                       Exam.ExamStatus status);
 
+    // ── Combined category-group listing (union of several categories' exams) ──────
+    @Query("""
+           SELECT e FROM Exam e
+           WHERE e.categoryCode IN :categories
+             AND (:testType IS NULL OR e.testType = :testType)
+             AND (:status   IS NULL OR e.status   = :status)
+           ORDER BY e.startTime ASC NULLS LAST, e.createdAt DESC
+           """)
+    List<Exam> filterByCategories(List<String> categories,
+                                  com.examplatform.exam.model.TestType testType,
+                                  Exam.ExamStatus status);
+
     // ── Dashboard summary aggregation ───────────────────────────────────────────
     @Query("""
            SELECT e.categoryCode, e.testType, COUNT(e)

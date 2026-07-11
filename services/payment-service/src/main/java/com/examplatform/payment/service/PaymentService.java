@@ -1,9 +1,12 @@
 package com.examplatform.payment.service;
 
+import com.examplatform.payment.client.ExamServiceClient;
 import com.examplatform.payment.client.UserServiceClient;
 import com.examplatform.payment.dto.*;
 import com.examplatform.payment.gateway.PaymentGatewayService;
+import com.examplatform.payment.model.AccessGrant;
 import com.examplatform.payment.model.Payment;
+import com.examplatform.payment.repository.AccessGrantRepository;
 import com.examplatform.payment.repository.PaymentRepository;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
@@ -36,10 +39,14 @@ public class PaymentService {
             "BASIC_MONTHLY", new long[]{1199L,  30}
     );
 
+    private static final int SCOPED_ACCESS_DURATION_DAYS = 365; // 1 year, per product decision
+
     private final PaymentRepository paymentRepository;
+    private final AccessGrantRepository accessGrantRepository;
     private final PaymentGatewayService gatewayService;
     private final KafkaTemplate<String, Object> kafkaTemplate;
     private final UserServiceClient userServiceClient;
+    private final ExamServiceClient examServiceClient;
 
     @Value("${payment.gateway.dev-mode:true}")
     private boolean devMode;
@@ -108,6 +115,105 @@ public class PaymentService {
                 .expiresAt(expiresAt)
                 .keyId(gatewayService.getKeyId())
                 .build();
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Create Scoped Order (buy a category or category-group — 1 year access)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    @Transactional
+    public CreateScopedOrderResponse createScopedOrder(UUID userId, CreateScopedOrderRequest req) {
+        String scopeType = req.getScopeType().toUpperCase();
+        String scopeCode  = req.getScopeCode();
+
+        Long priceInPaise = examServiceClient.fetchPriceInPaise(scopeType, scopeCode);
+        if (priceInPaise == null) {
+            throw new IllegalArgumentException("Unknown " + scopeType.toLowerCase() + ": " + scopeCode);
+        }
+
+        BigDecimal amount = BigDecimal.valueOf(priceInPaise);
+        String orderId = generateOrderId();
+        Instant expiresAt = Instant.now().plus(15, ChronoUnit.MINUTES);
+
+        // Free (price 0) — grant access immediately, no gateway round-trip needed; Razorpay
+        // doesn't meaningfully process a ₹0 charge anyway.
+        if (amount.compareTo(BigDecimal.ZERO) <= 0) {
+            Payment payment = Payment.builder()
+                    .userId(userId).orderId(orderId).amount(BigDecimal.ZERO).currency("INR")
+                    .plan(scopeType + ":" + scopeCode).durationDays(SCOPED_ACCESS_DURATION_DAYS)
+                    .scopeType(scopeType).scopeCode(scopeCode)
+                    .status(Payment.PaymentStatus.SUCCESS)
+                    .expiresAt(expiresAt)
+                    .build();
+            paymentRepository.save(payment);
+            grantAccess(userId, scopeType, scopeCode, orderId);
+            log.info("Free scoped grant issued: userId={} scopeType={} scopeCode={}", userId, scopeType, scopeCode);
+
+            return CreateScopedOrderResponse.builder()
+                    .orderId(orderId).amount(amount).currency("INR")
+                    .scopeType(scopeType).scopeCode(scopeCode)
+                    .expiresAt(expiresAt).freeGrant(true)
+                    .build();
+        }
+
+        String gatewayOrderId = gatewayService.createGatewayOrder(orderId, amount, "INR");
+
+        Payment payment = Payment.builder()
+                .userId(userId).orderId(orderId).gatewayOrderId(gatewayOrderId)
+                .amount(amount).currency("INR")
+                .plan(scopeType + ":" + scopeCode).durationDays(SCOPED_ACCESS_DURATION_DAYS)
+                .scopeType(scopeType).scopeCode(scopeCode)
+                .status(Payment.PaymentStatus.CREATED)
+                .expiresAt(expiresAt)
+                .build();
+        paymentRepository.save(payment);
+        log.info("Scoped payment order created: orderId={} userId={} scopeType={} scopeCode={} amount={}",
+                orderId, userId, scopeType, scopeCode, amount);
+
+        publishEvent(KAFKA_TOPIC_PAYMENT_EVENTS, Map.of(
+                "event", "PAYMENT_ORDER_CREATED", "orderId", orderId, "userId", userId.toString(),
+                "scopeType", scopeType, "scopeCode", scopeCode, "amount", amount,
+                "gatewayOrderId", gatewayOrderId, "timestamp", Instant.now().toString()
+        ));
+
+        return CreateScopedOrderResponse.builder()
+                .orderId(orderId).gatewayOrderId(gatewayOrderId).amount(amount).currency("INR")
+                .scopeType(scopeType).scopeCode(scopeCode).expiresAt(expiresAt)
+                .keyId(gatewayService.getKeyId()).freeGrant(false)
+                .build();
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Access checks (category/group ownership)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    @Transactional(readOnly = true)
+    public AccessCheckResponse checkAccess(UUID userId, String scopeType, String scopeCode) {
+        List<AccessGrant> active = accessGrantRepository.findActive(
+                userId, AccessGrant.ScopeType.valueOf(scopeType.toUpperCase()), scopeCode, Instant.now());
+        if (active.isEmpty()) return AccessCheckResponse.builder().hasAccess(false).build();
+        return AccessCheckResponse.builder().hasAccess(true).expiresAt(active.get(0).getExpiresAt()).build();
+    }
+
+    @Transactional(readOnly = true)
+    public List<MyAccessGrantResponse> getMyActiveGrants(UUID userId) {
+        return accessGrantRepository.findAllActiveForUser(userId, Instant.now()).stream()
+                .map(g -> MyAccessGrantResponse.builder()
+                        .scopeType(g.getScopeType().name()).scopeCode(g.getScopeCode())
+                        .purchasedAt(g.getPurchasedAt()).expiresAt(g.getExpiresAt())
+                        .build())
+                .toList();
+    }
+
+    private void grantAccess(UUID userId, String scopeType, String scopeCode, String orderId) {
+        AccessGrant grant = AccessGrant.builder()
+                .userId(userId)
+                .scopeType(AccessGrant.ScopeType.valueOf(scopeType.toUpperCase()))
+                .scopeCode(scopeCode)
+                .orderId(orderId)
+                .expiresAt(Instant.now().plus(SCOPED_ACCESS_DURATION_DAYS, ChronoUnit.DAYS))
+                .build();
+        accessGrantRepository.save(grant);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -184,14 +290,22 @@ public class PaymentService {
         paymentRepository.save(payment);
         log.info("Payment verified successfully: orderId={} userId={} plan={}", payment.getOrderId(), userId, payment.getPlan());
 
-        // Activate subscription on user-service
-        try {
-            userServiceClient.activateSubscription(userId, payment.getPlan(), payment.getDurationDays());
-            log.info("Subscription activated for userId={} plan={}", userId, payment.getPlan());
-        } catch (Exception e) {
-            // Log but do not fail the payment — subscription activation can be retried via Kafka consumer
-            log.error("Failed to activate subscription for userId={} plan={} - will rely on Kafka consumer for retry",
-                    userId, payment.getPlan(), e);
+        if (payment.getScopeType() != null) {
+            // Category/group-scoped purchase — grant 1-year access, NOT the global Pro/Basic
+            // subscription (those are unrelated, independent mechanisms).
+            grantAccess(userId, payment.getScopeType(), payment.getScopeCode(), payment.getOrderId());
+            log.info("Access granted for userId={} scopeType={} scopeCode={}",
+                    userId, payment.getScopeType(), payment.getScopeCode());
+        } else {
+            // Activate the original global subscription on user-service
+            try {
+                userServiceClient.activateSubscription(userId, payment.getPlan(), payment.getDurationDays());
+                log.info("Subscription activated for userId={} plan={}", userId, payment.getPlan());
+            } catch (Exception e) {
+                // Log but do not fail the payment — subscription activation can be retried via Kafka consumer
+                log.error("Failed to activate subscription for userId={} plan={} - will rely on Kafka consumer for retry",
+                        userId, payment.getPlan(), e);
+            }
         }
 
         // Publish success event

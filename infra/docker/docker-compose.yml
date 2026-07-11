@@ -164,6 +164,7 @@ services:
       SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
       IMAGE_STORAGE_DIR: /app/images
       IMAGE_STORAGE_BASE_URL: "http://localhost:8082/api/v1/exams/images"
+      SERVICES_PAYMENT_SERVICE_URL: "http://payment-service:8085"
     volumes:
       - exam-images:/app/images
 

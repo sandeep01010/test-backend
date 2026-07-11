@@ -39,6 +39,8 @@ public class ExamPreviewResponse {
         private String questionHtml;
         private List<String> questionImageUrls;
         private List<OptionDto> options;
+        private List<MatchItemDto> matchListLeft;   // MATCH_THE_FOLLOWING only — List-I
+        private List<MatchItemDto> matchListRight;  // MATCH_THE_FOLLOWING only — List-II
         private String correctAnswer;
         private List<String> correctAnswers;
         private Double numericalMin;
@@ -54,5 +56,11 @@ public class ExamPreviewResponse {
         private String id;
         private String text;
         private String imageUrl;
+    }
+
+    @Data @Builder
+    public static class MatchItemDto {
+        private String label;
+        private String text;
     }
 }

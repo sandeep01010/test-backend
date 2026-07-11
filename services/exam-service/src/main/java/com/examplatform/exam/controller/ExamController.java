@@ -130,6 +130,20 @@ public class ExamController {
         return ResponseEntity.noContent().build();
     }
 
+    /**
+     * PATCH /exams/{examId}/lock — toggle whether this exam requires an active access
+     * grant (category/group purchase) to attempt. Admin decides WHICH papers are premium;
+     * Super Admin separately controls HOW MUCH unlocking them costs via the price endpoints.
+     */
+    @PatchMapping("/{examId}/lock")
+    @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN')")
+    public ResponseEntity<ExamResponse> setLocked(
+            @PathVariable UUID examId,
+            @RequestBody Map<String, Boolean> body) {
+        boolean locked = Boolean.TRUE.equals(body.get("locked"));
+        return ResponseEntity.ok(examService.setLocked(examId, locked));
+    }
+
     private static boolean isSuperAdmin(String role) {
         return "SUPER_ADMIN".equalsIgnoreCase(role);
     }

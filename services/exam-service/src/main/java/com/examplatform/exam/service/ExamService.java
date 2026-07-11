@@ -24,6 +24,8 @@ public class ExamService {
 
     private final ExamRepository examRepository;
     private final ExamCategoryRepository categoryRepository;
+    private final com.examplatform.exam.repository.CategoryGroupRepository categoryGroupRepository;
+    private final com.examplatform.exam.client.PaymentAccessClient paymentAccessClient;
     private final ExamSlotRepository slotRepository;
     private final EnrollmentRepository enrollmentRepository;
     private final RedisTemplate<String, Object> redisTemplate;
@@ -193,6 +195,13 @@ public class ExamService {
             throw new IllegalStateException("Exam is not open for attempts");
         }
 
+        if (exam.isLocked() && !studentHasAccess(studentId, exam.getCategoryCode())) {
+            long price = categoryRepository.findById(exam.getCategoryCode())
+                    .map(com.examplatform.exam.model.ExamCategory::getPriceInPaise).orElse(0L);
+            throw new com.examplatform.exam.exception.PaymentRequiredException(
+                    "CATEGORY", exam.getCategoryCode(), price);
+        }
+
         Enrollment enrollment = enrollmentRepository
                 .findByStudentIdAndExamId(studentId, examId)
                 .orElse(null);
@@ -241,6 +250,31 @@ public class ExamService {
         return exams.stream().map(e -> {
             ExamResponse r = toResponse(e);
             r.setAttempted(attempted.contains(e.getId()));
+            if (e.isLocked() && studentId != null) r.setHasAccess(studentHasAccess(studentId, e.getCategoryCode()));
+            return r;
+        }).toList();
+    }
+
+    /**
+     * List exams across SEVERAL categories at once (a combined category group's union
+     * of papers) + test type + status. Same attempted-flag semantics as listExams() — an
+     * exam keeps its own categoryCode in the response, so the frontend can badge which
+     * original category each paper came from.
+     */
+    public List<ExamResponse> listExamsForCategories(List<String> categories,
+                                                      com.examplatform.exam.model.TestType testType,
+                                                      Exam.ExamStatus status,
+                                                      UUID studentId) {
+        if (categories == null || categories.isEmpty()) return List.of();
+        List<Exam> exams = examRepository.filterByCategories(categories, testType, status);
+
+        Set<UUID> attempted = studentId == null ? Set.of()
+                : new HashSet<>(enrollmentRepository.findExamIdsByStudentId(studentId));
+
+        return exams.stream().map(e -> {
+            ExamResponse r = toResponse(e);
+            r.setAttempted(attempted.contains(e.getId()));
+            if (e.isLocked() && studentId != null) r.setHasAccess(studentHasAccess(studentId, e.getCategoryCode()));
             return r;
         }).toList();
     }
@@ -296,6 +330,30 @@ public class ExamService {
         return prefix + suffix;
     }
 
+    @Transactional
+    public ExamResponse setLocked(UUID examId, boolean locked) {
+        Exam exam = examRepository.findById(examId)
+                .orElseThrow(() -> new RuntimeException("Exam not found: " + examId));
+        exam.setLocked(locked);
+        return toResponse(examRepository.save(exam));
+    }
+
+    /** A student can attempt a locked exam if they own EITHER its category directly, OR
+     *  any active group bundle that includes that category as a member. */
+    private boolean studentHasAccess(UUID studentId, String categoryCode) {
+        if (paymentAccessClient.hasAccess(studentId, "CATEGORY", categoryCode)) return true;
+
+        List<String> candidateGroups = categoryGroupRepository.findByActiveTrueOrderByDisplayOrderAsc().stream()
+                .filter(g -> g.getMemberCodes().contains(categoryCode))
+                .map(com.examplatform.exam.model.CategoryGroup::getCode)
+                .toList();
+
+        for (String groupCode : candidateGroups) {
+            if (paymentAccessClient.hasAccess(studentId, "GROUP", groupCode)) return true;
+        }
+        return false;
+    }
+
     private ExamResponse toResponse(Exam exam) {
         return ExamResponse.builder()
                 .id(exam.getId())
@@ -311,6 +369,8 @@ public class ExamService {
                 .startTime(exam.getStartTime())
                 .endTime(exam.getEndTime())
                 .instructions(exam.getInstructions())
+                .locked(exam.isLocked())
+                .hasAccess(!exam.isLocked()) // overridden per-student in listing methods when locked
                 .build();
     }
 }

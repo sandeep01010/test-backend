@@ -39,7 +39,7 @@ public class Question {
     private String difficulty;  // EASY, MEDIUM, HARD, VERY_HARD
 
     @Indexed
-    private String type;  // MCQ, NUMERICAL, SUBJECTIVE, MULTI_SELECT
+    private String type;  // MCQ, NUMERICAL, SUBJECTIVE, MULTI_SELECT, MATCH_THE_FOLLOWING
 
     @Field("question_text")
     private String questionText;
@@ -60,6 +60,12 @@ public class Question {
 
     @Field("correct_range")
     private NumericalRange correctRange;   // for NUMERICAL
+
+    @Field("match_list_left")
+    private List<MatchItem> matchListLeft;   // for MATCH_THE_FOLLOWING — List-I
+
+    @Field("match_list_right")
+    private List<MatchItem> matchListRight;  // for MATCH_THE_FOLLOWING — List-II
 
     private String explanation;
 
@@ -101,5 +107,12 @@ public class Question {
     public static class NumericalRange {
         private double min;
         private double max;
+    }
+
+    /** One row of a MATCH_THE_FOLLOWING List-I/List-II table, e.g. label="P", text="|v|^2 is equal to". */
+    @Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
+    public static class MatchItem {
+        private String label;
+        private String text;
     }
 }

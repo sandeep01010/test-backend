@@ -62,6 +62,52 @@ public class PaymentController {
     }
 
     /**
+     * POST /payments/scoped-orders
+     * Create an order to buy access to a category or category-group (1 year). Price is
+     * fetched authoritatively from exam-service — the client can never set the amount.
+     */
+    @PostMapping("/scoped-orders")
+    @PreAuthorize("hasRole('STUDENT')")
+    public ResponseEntity<CreateScopedOrderResponse> createScopedOrder(
+            @Valid @RequestBody CreateScopedOrderRequest request,
+            HttpServletRequest httpRequest) {
+
+        UUID userId = extractUserId(httpRequest);
+        log.info("Create scoped order: userId={} scopeType={} scopeCode={}",
+                userId, request.getScopeType(), request.getScopeCode());
+        return ResponseEntity.status(HttpStatus.CREATED).body(paymentService.createScopedOrder(userId, request));
+    }
+
+    /**
+     * GET /payments/access?scopeType=CATEGORY&scopeCode=JEE_MAIN
+     * Does the authenticated user currently have active (non-expired) access to this
+     * category/group? Used by the frontend to decide whether to show a lock icon, and by
+     * exam-service (server-to-server, trusted X-User-Id header, no gateway) to gate attempts.
+     */
+    @GetMapping("/access")
+    @PreAuthorize("hasRole('STUDENT')")
+    public ResponseEntity<AccessCheckResponse> checkAccess(
+            @RequestParam String scopeType,
+            @RequestParam String scopeCode,
+            HttpServletRequest httpRequest) {
+
+        UUID userId = extractUserId(httpRequest);
+        return ResponseEntity.ok(paymentService.checkAccess(userId, scopeType, scopeCode));
+    }
+
+    /**
+     * GET /payments/access/mine
+     * All of the authenticated user's currently-active category/group access grants —
+     * lets the frontend bulk-resolve lock state across many exams in one call.
+     */
+    @GetMapping("/access/mine")
+    @PreAuthorize("hasRole('STUDENT')")
+    public ResponseEntity<List<MyAccessGrantResponse>> myActiveGrants(HttpServletRequest httpRequest) {
+        UUID userId = extractUserId(httpRequest);
+        return ResponseEntity.ok(paymentService.getMyActiveGrants(userId));
+    }
+
+    /**
      * GET /payments/history
      * Get the authenticated user's full payment history.
      */
