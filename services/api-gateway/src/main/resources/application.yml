@@ -10,7 +10,7 @@ spring:
       routes:
         # User Service — Auth routes that require JWT (subscribe, subscription-status)
         - id: user-service-auth-protected
-          uri: http://user-service:8081
+          uri: http://user-service
           predicates:
             - Path=/api/v1/auth/subscribe, /api/v1/auth/subscription-status
           filters:
@@ -23,7 +23,7 @@ spring:
 
         # User Service — Auth routes (no JWT required)
         - id: user-service-auth
-          uri: http://user-service:8081
+          uri: http://user-service
           predicates:
             - Path=/api/v1/auth/**
           filters:
@@ -36,7 +36,7 @@ spring:
 
         # User Service — Admin user management (ADMIN / SUPER_ADMIN)
         - id: user-service-admin
-          uri: http://user-service:8081
+          uri: http://user-service
           predicates:
             - Path=/api/v1/admin/users, /api/v1/admin/users/**
           filters:
@@ -50,7 +50,7 @@ spring:
 
         # User Service — Protected routes
         - id: user-service-protected
-          uri: http://user-service:8081
+          uri: http://user-service
           predicates:
             - Path=/api/v1/users/**
           filters:
@@ -63,7 +63,7 @@ spring:
 
         # Exam Service — Image upload (no circuit breaker; must resolve before catch-all)
         - id: exam-service-images
-          uri: http://exam-service:8082
+          uri: http://exam-service
           predicates:
             - Path=/api/v1/exams/images/upload, /api/v1/exams/images/bulk-upload
           filters:
@@ -77,7 +77,7 @@ spring:
         # Exam Service — Auth-required endpoints (must come before the public catch-all)
         # These endpoints need a valid JWT; expired tokens return 401 → frontend redirects to login.
         - id: exam-service-auth
-          uri: http://exam-service:8082
+          uri: http://exam-service
           predicates:
             - Path=/api/v1/exams/*/paper/**, /api/v1/exams/*/attempt, /api/v1/exams/*/enroll, /api/v1/exams/*/approve, /api/v1/exams/*/preview, /api/v1/exams/upload, /api/v1/exams/upload/**, /api/v1/exams/mine, /api/v1/exams/*/publish, /api/v1/exams/admin/**
           filters:
@@ -95,7 +95,7 @@ spring:
         # Exam Service — Public browse (categories, published exam list, exam metadata)
         # Optional auth: logged-in users get personalised data; anonymous users can still browse.
         - id: exam-service
-          uri: http://exam-service:8082
+          uri: http://exam-service
           predicates:
             - Path=/api/v1/exams, /api/v1/exams/**, /api/v1/questions, /api/v1/questions/**
           filters:
@@ -112,7 +112,7 @@ spring:
 
         # Test Engine — HTTP
         - id: test-engine-http
-          uri: http://test-engine:8083
+          uri: http://test-engine
           predicates:
             - Path=/api/v1/sessions/**
           filters:
@@ -129,7 +129,7 @@ spring:
 
         # Test Engine — WebSocket (sticky sessions required)
         - id: test-engine-websocket
-          uri: ws://test-engine:8083
+          uri: ws://test-engine
           predicates:
             - Path=/ws/**
           filters:
@@ -140,7 +140,7 @@ spring:
 
         # Result Service
         - id: result-service
-          uri: http://result-service:8084
+          uri: http://result-service
           predicates:
             - Path=/api/v1/results/**
           filters:
@@ -153,7 +153,7 @@ spring:
 
         # Payment Service — Webhook (no JWT, Razorpay calls this)
         - id: payment-service-webhook
-          uri: http://payment-service:8085
+          uri: http://payment-service
           predicates:
             - Path=/api/v1/payments/webhook
           filters:
@@ -165,7 +165,7 @@ spring:
 
         # Payment Service — Admin endpoints
         - id: payment-service-admin
-          uri: http://payment-service:8085
+          uri: http://payment-service
           predicates:
             - Path=/api/v1/payments/admin/**
           filters:
@@ -178,7 +178,7 @@ spring:
 
         # Payment Service — Student endpoints (JWT required)
         - id: payment-service
-          uri: http://payment-service:8085
+          uri: http://payment-service
           predicates:
             - Path=/api/v1/payments/**
           filters:
@@ -222,6 +222,7 @@ spring:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
       password: ${REDIS_PASSWORD:}
+      timeout: 2000ms
 
 jwt:
   public-key-pem: ${JWT_PUBLIC_KEY_PEM:GENERATE_ME}

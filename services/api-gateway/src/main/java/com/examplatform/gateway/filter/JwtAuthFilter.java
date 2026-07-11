@@ -74,8 +74,11 @@ public class JwtAuthFilter extends AbstractGatewayFilterFactory<JwtAuthFilter.Co
 
                 String jti = claims.getId();
 
-                // Async blacklist check in Redis
+                // Async blacklist check in Redis — fail open on Redis hiccups (timeout/connection
+                // error) rather than rejecting every authenticated request when Redis blips.
                 return redisTemplate.hasKey("auth:blacklist:" + jti)
+                        .timeout(java.time.Duration.ofSeconds(2))
+                        .onErrorReturn(false)
                         .flatMap(blacklisted -> {
                             if (Boolean.TRUE.equals(blacklisted)) {
                                 return unauthorizedResponse(exchange.getResponse(), "Token revoked");

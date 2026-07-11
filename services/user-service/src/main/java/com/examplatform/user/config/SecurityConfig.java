@@ -25,6 +25,9 @@ public class SecurityConfig {
                     "/auth/login",
                     "/auth/otp/**",
                     "/auth/refresh",
+                    "/auth/logout",      // reads Authorization header itself; no SecurityContext principal needed
+                    "/auth/subscribe",              // auth enforced by gateway (JwtAuthFilter) + @RequestAttribute
+                    "/auth/subscription-status",    // auth enforced by gateway (JwtAuthFilter) + @RequestAttribute
                     "/admin/users/**",   // auth enforced by gateway + role check in controller
                     "/actuator/health",
                     "/actuator/prometheus"

@@ -75,6 +75,8 @@ public class OptionalJwtAuthFilter extends AbstractGatewayFilterFactory<Optional
 
                 String jti = claims.getId();
                 return redisTemplate.hasKey("auth:blacklist:" + jti)
+                        .timeout(java.time.Duration.ofSeconds(2))
+                        .onErrorReturn(false) // Redis hiccup -> don't block the whole route; treat as not-blacklisted.
                         .flatMap(blacklisted -> {
                             if (Boolean.TRUE.equals(blacklisted)) {
                                 // Revoked token -> treat as anonymous, don't reject browsing.
